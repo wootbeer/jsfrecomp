@@ -1,0 +1,5 @@
+[
+  {"start": "0x0027B004", "observed": true, "note": "indirect call target at boot, XPP section (XAPI device init, through a table); not found by the static sweep"},
+  {"start": "0x0027B8E9", "observed": true, "note": "indirect call target at boot, XPP section (XAPI device init, through a table); not found by the static sweep"},
+  {"start": "0x0014D358", "observed": true, "note": "indirect call target at boot (called from 0x001AB990 during start-up); not found by the static sweep"}
+]
