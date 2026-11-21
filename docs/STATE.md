@@ -15,8 +15,9 @@ guest memory had been wiped. With DirectSound ported
 sound streams open. The menus draw; a level was black
 (sound playing): its declaration-only vertex shaders spread a vertex over
 several streams, now copied together per draw. Then a level load froze
-at 90 %: the CRT's tan() looping on a stale x87 C2 (patch 0050). Input
-ported. The cloud has default.xbe
+at 90 %: the CRT's tan() looping on a stale x87 C2 (patch 0050). In the
+training level the ships draw; A did nothing in the pause menu (a run of
+missed wrappers at 0x000683AC, now seeds). Input ported. The cloud has default.xbe
 only. Facts: `docs/jsf-facts.md`.
 
 ## How it fits together

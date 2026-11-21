@@ -175,3 +175,15 @@ code 0x001FEB80 and 0x001FEC60.
   `fnstsw ax; sahf; jp` and fprem1 until C2 clears; neither lifted
   instruction set C2, so a stale unordered compare kept the loop going.
   Patch 0050: 28 sites in this XBE.
+
+## Sixth run (training level)
+
+- The ships draw: vertex programs (78 instructions, run on the GPU through
+  the interpreter, a pixel shader each), DXT textures, the shadow map at
+  stage 2. The level's intro shot shows the player's ship fly off.
+- The owner could not play on: A did nothing in the pause menu. The log
+  has an `[ICALL] Failed` for 0x00068449, a `mov ecx, [esp+4]; jmp`
+  wrapper in a run of small wrappers (0x000683AC-0x0006858F) the sweep
+  missed: 18 of them, now seeds. Likely the menus' (Flash) callbacks.
+- `texture coordinate generation 0x30000 not handled` (camera-space
+  reflection vector): something shiny lacks its reflection.
