@@ -198,3 +198,15 @@ code 0x001FEB80 and 0x001FEC60.
   been flushed (`xbox_set_guest_event`, patch 0051).
 - `t01.pak` is opened and not on the disc; `onlowerpausemenu.con` is the
   pause menu's console script.
+
+## Eighth run (first training level played through)
+
+- Three entry points reached only through tables, `[ICALL] Failed` in the
+  level, now seeds: 0x00184657 (a jmp thunk) and the C runtime's x87
+  math, 0x0020786D and 0x0020892D (exp's core, about 300,000 calls: most
+  of a 125 MB log).
+- No widescreen in the game: its only aspect strings are the cutscene
+  letterbox (`CLetterbox`). Its projection is a plain 4:3 perspective
+  (x scale 3/4 of y). A camera object keeps 4/3 at +0x154 and 0.75 at
+  +0x158 (constructor at 0x0005DDD5; copied at 0x0005698D, 0x00063DB2).
+- 2D is drawn pretransformed (FVF XYZRHW).

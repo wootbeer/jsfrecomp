@@ -19,7 +19,10 @@ at 90 %: the CRT's tan() looping on a stale x87 C2 (patch 0050). In the
 training level the ships draw; A did nothing in the pause menu (a run of
 missed wrappers at 0x000683AC, now seeds; the pause menu works since).
 The mission stopped after its first voice line: stream packets'
-completion events are now set when a packet has played. Input ported. The cloud has default.xbe
+completion events are now set when a packet has played; with that the
+first training level plays through. Widescreen (16:9, 21:9, HUD centered
+or at the edges) is ours, at the Direct3D level (`widescreen.c`). Input
+ported. The cloud has default.xbe
 only. Facts: `docs/jsf-facts.md`.
 
 ## How it fits together
@@ -47,17 +50,16 @@ only. Facts: `docs/jsf-facts.md`.
 
 ## Next
 
-1. A longer run on the full game, with a controller: the movies, the
-   title screen, the menus (Flash, "Strobe", `swf/`). Check the log for
-   "declaration-only vertex shader ... not drawn" and "FVF ... not
-   handled" lines.
-2. The steady kernel calls during the movie (NtWaitForSingleObjectEx and
-   NtReleaseMutant about 1.7 million a second each): a thread polling.
-3. `d3d_calltrace.c` from `tools/gen_d3d_calltrace.py --symbols
-   build/xdk_symbols.txt`.
-4. Bink: lines like scanlines through the logo movies (owner's report):
-   a capture (F12) of a movie frame, then Bink's blitter or our texture.
-5. The app icon (`tools/make_icon.py`) is still Mad Dash's design.
+1. Widescreen on the owner's machine: the view wider, the HUD the right
+   shape, full-width 2D (letterbox, fades, movies) stretched. Pop-in at
+   the sides would mean widening the game's culling: its camera object
+   (+0x154 4/3, +0x158 0.75; set up at 0x0005DDD5).
+2. Frame interpolation (F1 > Advanced) on this game: artifacts?
+3. More levels: `[ICALL] Failed` lines into the seeds.
+4. Camera-space reflection texture coordinates (TCI 0x30000) are not
+   generated: shiny things lack their reflections.
+5. Bink: lines like scanlines through the logo movies (owner's report).
+6. The app icon (`tools/make_icon.py`) is still Mad Dash's design.
 
 ## Testing
 
