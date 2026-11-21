@@ -1,5 +1,22 @@
 [
   {"start": "0x0027B004", "observed": true, "note": "indirect call target at boot, XPP section (XAPI device init, through a table); not found by the static sweep"},
   {"start": "0x0027B8E9", "observed": true, "note": "indirect call target at boot, XPP section (XAPI device init, through a table); not found by the static sweep"},
-  {"start": "0x0014D358", "observed": true, "note": "indirect call target at boot (called from 0x001AB990 during start-up); not found by the static sweep"}
+  {"start": "0x0014D358", "observed": true, "note": "indirect call target at boot (called from 0x001AB990 during start-up); not found by the static sweep"},
+  {"start": "0x00227BD0", "observed": true, "note": "indirect call target at boot, D3D section (called through D3D's tables during device setup); not found by the static sweep"},
+  {"start": "0x00227C00", "observed": true, "note": "indirect call target at boot, D3D section (called through D3D's tables during device setup); not found by the static sweep"},
+  {"start": "0x00227F40", "observed": true, "note": "indirect call target at boot, D3D section (called through D3D's tables during device setup); not found by the static sweep"},
+  {"start": "0x00227F80", "observed": true, "note": "indirect call target at boot, D3D section (called through D3D's tables during device setup); not found by the static sweep"},
+  {"start": "0x00228020", "observed": true, "note": "indirect call target at boot, D3D section (called through D3D's tables during device setup); not found by the static sweep"},
+  {"start": "0x00228110", "observed": true, "note": "indirect call target at boot, D3D section (called through D3D's tables during device setup); not found by the static sweep"},
+  {"start": "0x00228190", "observed": true, "note": "indirect call target at boot, D3D section (called through D3D's tables during device setup); not found by the static sweep"},
+  {"start": "0x00228240", "observed": true, "note": "indirect call target at boot, D3D section (called through D3D's tables during device setup); not found by the static sweep"},
+  {"start": "0x002282A0", "observed": true, "note": "indirect call target at boot, D3D section (called through D3D's tables during device setup); not found by the static sweep"},
+  {"start": "0x00228310", "observed": true, "note": "indirect call target at boot, D3D section (called through D3D's tables during device setup); not found by the static sweep"},
+  {"start": "0x00228B60", "observed": true, "note": "indirect call target at boot, D3D section (called through D3D's tables during device setup); not found by the static sweep"},
+  {"start": "0x00228B90", "observed": true, "note": "indirect call target at boot, D3D section (called through D3D's tables during device setup); not found by the static sweep"},
+  {"start": "0x00228C70", "observed": true, "note": "indirect call target at boot, D3D section (called through D3D's tables during device setup); not found by the static sweep"},
+  {"start": "0x00228C90", "observed": true, "note": "indirect call target at boot, D3D section (called through D3D's tables during device setup); not found by the static sweep"},
+  {"start": "0x00228CB0", "observed": true, "note": "indirect call target at boot, D3D section (called through D3D's tables during device setup); not found by the static sweep"},
+  {"start": "0x00228CD0", "observed": true, "note": "indirect call target at boot, D3D section (called through D3D's tables during device setup); not found by the static sweep"},
+  {"start": "0x00228D30", "observed": true, "note": "indirect call target at boot, D3D section (called through D3D's tables during device setup); not found by the static sweep"}
 ]

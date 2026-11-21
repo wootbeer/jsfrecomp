@@ -1,0 +1,18 @@
+movsx from bp or sp: sign-extend
+
+_lift_movsx listed the 16-bit source registers without bp and sp
+(_lift_movzx has them), so `movsx ebp, bp` was lifted as a zero
+extension: a negative 16-bit value became 0x0000FFFF. Found in Mad Dash
+Recomp (Bink IDCT); carried here as 0048.
+
+--- a/tools/recomp/lifter.py	2026-11-21 00:37:41.366388135 +0000
++++ b/tools/recomp/lifter.py	2026-11-21 00:37:41.367861928 +0000
+@@ -1866,7 +1866,7 @@
+             r = ops[1].reg
+             if r in ("al", "bl", "cl", "dl", "ah", "bh", "ch", "dh"):
+                 src = f"SX8({src})"
+-            elif r in ("ax", "bx", "cx", "dx", "si", "di"):
++            elif r in ("ax", "bx", "cx", "dx", "si", "di", "bp", "sp"):
+                 src = f"SX16({src})"
+         return [_fmt_operand_write(ops[0], src)]
+ 
