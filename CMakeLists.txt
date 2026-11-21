@@ -100,6 +100,18 @@ target_sources(JediStarfighterRecomp PRIVATE
 target_include_directories(JediStarfighterRecomp PRIVATE src)
 target_link_libraries(JediStarfighterRecomp PRIVATE SDL3::SDL3-static)
 target_compile_definitions(JediStarfighterRecomp PRIVATE JSF_VERSION="${PROJECT_VERSION}")
+# The commit built, for the log's first line (a stale executable shows at
+# once). Configure runs again when git's index changes (a commit, checkout
+# or pull).
+execute_process(COMMAND git rev-parse --short HEAD WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+                OUTPUT_VARIABLE JSF_COMMIT OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+if(NOT JSF_COMMIT)
+    set(JSF_COMMIT "unknown")
+endif()
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git/index")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/.git/index")
+endif()
+target_compile_definitions(JediStarfighterRecomp PRIVATE JSF_COMMIT="${JSF_COMMIT}")
 if(WIN32)
     enable_language(RC)
     target_sources(JediStarfighterRecomp PRIVATE icons/app.rc)

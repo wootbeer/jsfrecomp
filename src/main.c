@@ -528,7 +528,10 @@ int main(int argc, char **argv)
     }
 #endif
     SDL_SetAppMetadata(APP_NAME, JSF_VERSION, "io.github.jsfrecomp");
-    SDL_Log("%s %s (built %s), %s, %d logical cores, %d MB RAM", APP_NAME, JSF_VERSION, __DATE__,
+#ifndef JSF_COMMIT
+#define JSF_COMMIT "unknown"
+#endif
+    SDL_Log("%s %s (commit %s, built %s), %s, %d logical cores, %d MB RAM", APP_NAME, JSF_VERSION, JSF_COMMIT, __DATE__,
             SDL_GetPlatform(), SDL_GetNumLogicalCPUCores(), SDL_GetSystemRAM());
     {
         const char *dir = jsf_data_dir();      /* first: it sets the note */
