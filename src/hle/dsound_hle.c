@@ -811,6 +811,8 @@ static void pause_voice(int id, uint32_t how)
  * pdwCompletedSize, pdwStatus and completion event are copied when it is
  * queued, and written from the mixer thread when it has played. */
 
+int xbox_set_guest_event(uint32_t token);     /* xboxrecomp, patch 0051 */
+
 #define TAG_STREAM          0x53524450u     /* "PDRS" */
 #define STREAM_VTABLE       0x002BB644u     /* AddRef, Release, GetInfo, GetStatus, Process, Discontinuity, Flush */
 
@@ -865,6 +867,16 @@ static void packet_done(void *user, uint32_t tag, bool flushed)
         MEM32(p->completed_size) = flushed ? 0 : p->bytes;
     if (p->status)
         MEM32(p->status) = flushed ? XMEDIAPACKET_STATUS_FLUSHED : XMEDIAPACKET_STATUS_SUCCESS;
+    /* Then its completion event, as the hardware's interrupt would: the
+     * game's mission script waits on a voice line's last packet before it
+     * goes on (one line played, then nothing happened). */
+    if (p->event && !xbox_set_guest_event(p->event)) {
+        static bool warned;
+        if (!warned) {
+            warned = true;
+            SDL_Log("dsound: a stream packet's completion event 0x%08x could not be set", p->event);
+        }
+    }
 }
 
 /* DirectSoundCreateStream(pdssd, ppStream). DSSTREAMDESC: dwFlags,
@@ -1020,8 +1032,6 @@ void sub_00245BEF(void)
     p->completed_size = MEM32(in + 8);
     p->status = MEM32(in + 12);
     p->event = MEM32(in + 16);
-    if (p->event && !s->callback)
-        note_once("stream packet completion events");
     if (p->completed_size)
         MEM32(p->completed_size) = 0;
     if (p->status)

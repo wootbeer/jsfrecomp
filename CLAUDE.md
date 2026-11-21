@@ -25,9 +25,9 @@ address or name instead.
 - **xboxrecomp patches must not overlap.** `recomp.py` and CMake decide a
   patch is applied with `git apply --reverse --check`, one patch at a time.
   To change lines an earlier patch added, edit that patch instead.
-  There are 50 now: 0001-0043 as Orta Recomp's (0023 extended in Mad Dash
+  There are 51 now: 0001-0043 as Orta Recomp's (0023 extended in Mad Dash
   Recomp with the boot generation for 0047), 0044-0048 from Mad Dash Recomp,
-  0049-0050 here.
+  0049-0051 here.
 - **Third-party projects** (Cxbx-Reloaded and its XbSymbolDatabase, xemu,
   other ports): facts only, no code. Symbol databases and listings are read
   from a local clone at run time, never committed. Our own GPL code from

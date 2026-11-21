@@ -1,0 +1,25 @@
+xbox_set_guest_event: set a guest event from host code
+
+An HLE layer finishing work the title waits on needs to signal the
+guest's event handle: Jedi Starfighter waits on its DirectSound stream
+packets' completion events (a voice line done) before its mission script
+goes on. Resolves the handle as NtSetEvent does.
+
+--- a/src/kernel/kernel_bridge.c
++++ b/src/kernel/kernel_bridge.c
+@@ -1769,6 +1769,15 @@
+     g_eax = (uint32_t)xbox_NtSetEvent(handle, XBOX_TO_NATIVE(prev));
+ }
+ 
++/* NtSetEvent for host code: an HLE layer finishing work the title waits on
++ * (a DirectSound stream packet's completion event, set from the mixer's
++ * thread) signals the guest's event handle here. Nonzero when it was set. */
++int xbox_set_guest_event(uint32_t token)
++{
++    HANDLE handle = bridge_resolve_handle(token);
++    return handle && xbox_NtSetEvent(handle, NULL) == 0;
++}
++
+ /* ── NtPulseEvent (ordinal 205) ──────────────────────────── */
+ /* Signal-then-reset: releases threads currently waiting, then leaves the event
+  * non-signalled. Same unbridged-no-op hazard as NtSetEvent in the map-load

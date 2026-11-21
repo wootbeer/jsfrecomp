@@ -187,3 +187,14 @@ code 0x001FEB80 and 0x001FEC60.
   missed: 18 of them, now seeds. Likely the menus' (Flash) callbacks.
 - `texture coordinate generation 0x30000 not handled` (camera-space
   reflection vector): something shiny lacks its reflection.
+
+## Seventh run (training level, pause menu works)
+
+- The pause menu works with the wrappers seeded. In the level, one voice
+  line, the ships fly off, then only music and an empty starfield. The
+  game passes hCompletionEvent in its stream packets (XMEDIAPACKET +16)
+  and its mission script waits for a line's last packet; the events were
+  never set. Now set from the mixer thread when a packet has played or
+  been flushed (`xbox_set_guest_event`, patch 0051).
+- `t01.pak` is opened and not on the disc; `onlowerpausemenu.con` is the
+  pause menu's console script.

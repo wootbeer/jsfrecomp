@@ -17,7 +17,9 @@ sound streams open. The menus draw; a level was black
 several streams, now copied together per draw. Then a level load froze
 at 90 %: the CRT's tan() looping on a stale x87 C2 (patch 0050). In the
 training level the ships draw; A did nothing in the pause menu (a run of
-missed wrappers at 0x000683AC, now seeds). Input ported. The cloud has default.xbe
+missed wrappers at 0x000683AC, now seeds; the pause menu works since).
+The mission stopped after its first voice line: stream packets'
+completion events are now set when a packet has played. Input ported. The cloud has default.xbe
 only. Facts: `docs/jsf-facts.md`.
 
 ## How it fits together
@@ -25,7 +27,8 @@ only. Facts: `docs/jsf-facts.md`.
 - `tools/recomp.py`: the USA `default.xbe` (or the ISO) -> `gen/` through
   xboxrecomp and patches 0001-0049 (0048: movsx from bp/sp, from Mad
   Dash; 0049: file reads logged only up to 2000, then failures; 0050:
-  x87 transcendentals and fprem clear C2, or the CRT's tan() looped). Data sections `.data`, `DOLBY` and `BINKDATA` are excluded from
+  x87 transcendentals and fprem clear C2, or the CRT's tan() looped;
+  0051: xbox_set_guest_event, for HLE code to signal a guest event). Data sections `.data`, `DOLBY` and `BINKDATA` are excluded from
   the code sweep. 20 seeds from boots (`tools/jsf_seeds.json`).
 - `src/xbe.c`, `tools/recomp.py`: title ID 4C410005, the one known dump
   hash and the section layout (keep the two in step).
