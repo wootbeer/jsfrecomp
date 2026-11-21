@@ -1079,7 +1079,7 @@ static const char *help_of(int item)
     case ITEM_ASPECT:
         return jsf_widescreen_needs_restart() ? "Restart to switch 4:3/wide." : "Wider shows more to the sides.";
     case ITEM_FIT:    return "Bars, stretched or zoomed.";
-    case ITEM_HUD:    return "21:9: HUD centered or at edges.";
+    case ITEM_HUD:    return "Wide: HUD centered or at edges.";
     case ITEM_MOVIES: {
         static const char *helps[JSF_MOVIE_COUNT] = { "As the game frames it.", "The whole film, its own shape.",
                                                       "Film stretched to the window.", "Film fills; edges cut off." };

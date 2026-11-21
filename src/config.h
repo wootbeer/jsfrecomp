@@ -19,8 +19,8 @@ typedef struct jsf_config {
 typedef struct jsf_settings {
     int  render_scale2;     /* 2-16: render targets at half this multiple of the game's size (3: 1.5x) */
     int  msaa;              /* 1, 2, 4 or 8 samples */
-    int  aspect;            /* JSF_ASPECT_*; 16:9 is the game's own widescreen mode */
-    bool hud_edges;         /* 21:9: the HUD out to the screen's sides, not its 16:9 layout (d3d_hle.c) */
+    int  aspect;            /* JSF_ASPECT_*: 16:9 and 21:9 widen the view (src/guest/widescreen.c) */
+    bool hud_edges;         /* widescreen: the HUD out to the screen's sides, not centered (d3d_hle.c) */
     int  fit;               /* JSF_FIT_*: how the picture fills the window */
     int  movie_fit;         /* JSF_MOVIE_*: how a movie's picture fills it (renderer.c) */
     bool soft_filter;       /* TV-like vertical softening at presentation */
@@ -79,12 +79,13 @@ enum { JSF_FIT_BARS, JSF_FIT_STRETCH, JSF_FIT_ZOOM, JSF_FIT_COUNT };
  * or zoomed. */
 enum { JSF_MOVIE_ORIGINAL, JSF_MOVIE_BARS, JSF_MOVIE_STRETCH, JSF_MOVIE_ZOOM, JSF_MOVIE_COUNT };
 
-/* Whether the game set itself up in its widescreen mode (anamorphic 16:9,
- * or wider: a wider view squeezed into 640x480), which it reads once at
- * start, and the shape its picture is meant to be shown at (4/3 when not
- * widescreen): src/guest/widescreen.c. */
+/* Whether the picture is drawn widescreen (anamorphic: a wider view in the
+ * game's 640x480), the shape it is meant to be shown at (4/3 when not),
+ * and how much narrower a 4:3 x becomes in it (1 at 4:3):
+ * src/guest/widescreen.c. */
 bool jsf_widescreen_active(void);
 float jsf_widescreen_ratio(void);
+float jsf_widescreen_k(void);
 /* The aspect setting asks for 4:3 in a widescreen game or the other way:
  * that takes a restart (16:9 and 21:9 switch at the next frame). */
 bool jsf_widescreen_needs_restart(void);

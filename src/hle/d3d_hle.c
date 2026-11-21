@@ -370,7 +370,7 @@ static void hud_menu_log(void)
     static int n;
     bool now = hud_menu();
 
-    if (now == was || !jsf_settings_get()->hud_edges || jsf_widescreen_ratio() <= 16.0f / 9.0f + 0.01f)
+    if (now == was || !jsf_settings_get()->hud_edges || !jsf_widescreen_active())
         return;
     was = now;
     if (n++ < 40)
@@ -1247,6 +1247,23 @@ void sub_00226830(void)
     sub_00226830_gen();
 }
 
+/* The projection the draws use: the game's, with a perspective one's x
+ * scale narrowed for widescreen (src/guest/widescreen.c), so the view is
+ * wider. Row vectors: x is column 0. An orthographic one (no w from z) is
+ * left alone. */
+static const float *projection(void)
+{
+    static float m[16];
+    float k = jsf_widescreen_k();
+
+    if (k == 1.0f || st.mat[TS_PROJECTION][11] == 0.0f)
+        return st.mat[TS_PROJECTION];
+    memcpy(m, st.mat[TS_PROJECTION], sizeof m);
+    for (int r = 0; r < 4; r++)
+        m[r * 4] *= k;
+    return m;
+}
+
 /* D3DDevice_SetViewport(pViewport): D3DVIEWPORT8 {X, Y, Width, Height,
  * float MinZ, float MaxZ}. */
 extern void sub_00227170_gen(void);
@@ -1858,7 +1875,7 @@ static bool fetch_fvf(uint32_t fvf, uint32_t base, uint32_t stride, uint32_t fir
         nlights = enabled_lights(lights);
     scale = !*pretransformed && RS(RS_POINTSCALEENABLE);
     mat_mul(st.mat[TS_WORLD], st.mat[TS_VIEW], wv);
-    mat_mul(wv, st.mat[TS_PROJECTION], wvp);
+    mat_mul(wv, projection(), wvp);
 
     for (uint32_t i = 0; i < count; i++) {
         uint32_t v = base + (first + i) * stride;
@@ -1992,7 +2009,7 @@ static bool fvf_gpu_job(uint32_t fvf, uint32_t base, uint32_t stride, uint32_t f
     u->rt[0] = (float)rtw;
     u->rt[1] = (float)rth;
     mat_mul(st.mat[TS_WORLD], st.mat[TS_VIEW], u->wv);
-    mat_mul(u->wv, st.mat[TS_PROJECTION], u->wvp);
+    mat_mul(u->wv, projection(), u->wvp);
     /* Reversed depth (renderer.c): w - z as its own column, in double from
      * the projection's columns, so the shader's 1 - z does not come from
      * subtracting two nearly equal floats. */
@@ -2208,7 +2225,7 @@ static void vsh_constants(const jsf_vsh_program *p, float scale[3], float offset
     offset[0] = x + w * 0.5f + 0.53125f; offset[1] = y + h * 0.5f + 0.53125f; offset[2] = zo;
     for (int k = 0; k < 3; k++) {
         if (p->viewport_read & 1)
-            vconst[58][k] = scale[k];
+            vconst[58][k] = scale[k] * (k == 0 ? jsf_widescreen_k() : 1.0f);   /* widescreen: a wider view */
         if (p->viewport_read & 2)
             vconst[59][k] = offset[k];
     }
@@ -2440,16 +2457,15 @@ static bool timed_fvf(uint32_t fvf, uint32_t base, uint32_t stride, uint32_t fir
     return ok;
 }
 
-/* On a screen wider than 16:9 (21:9, src/guest/widescreen.c): whether this
- * draw is a sprite of the game's HUD routine -- the screen-space sprites of
- * the HUD, menus and story text, all drawn from one routine (the draw
- * returning to 0x0006A24B, from the batch 0x0006A340) -- and if so the
- * bounds of its vertices, in the game's pixels. */
+/* Widescreen (src/guest/widescreen.c): whether this draw is in screen
+ * space -- the HUD, menus, text, and the game's own 2D -- and if so the
+ * bounds of its vertices, in the game's pixels. Jedi Starfighter draws
+ * them all pretransformed (FVF XYZRHW). */
 static bool hud_sprite(uint32_t base, uint32_t stride, uint32_t first, uint32_t count, float box[4])
 {
-    if (!count || !jsf_widescreen_active() || jsf_widescreen_ratio() <= 16.0f / 9.0f + 0.01f)
+    if (!count || !jsf_widescreen_active())
         return false;
-    if (MEM32(g_esp) != 0u /* Orta's HUD routine; not found in Jedi Starfighter */ || (st.vshader & 1) || (st.vshader & 0x00E) != 0x004)
+    if ((st.vshader & 1) || (st.vshader & 0x00E) != 0x004)
         return false;
     box[0] = box[1] = 1e9f;
     box[2] = box[3] = -1e9f;
@@ -2501,7 +2517,7 @@ static void hud_squeeze(uint32_t base, uint32_t stride, uint32_t first, uint32_t
         }
         return;                 /* as wide as the screen */
     }
-    *k = (16.0f / 9.0f) / jsf_widescreen_ratio();
+    *k = jsf_widescreen_k();
     if (jsf_settings_get()->hud_edges && !hud_menu() &&
         (b[3] <= (float)rth / 3.0f || b[1] >= 2.0f * (float)rth / 3.0f)) {
         w3 = (float)rtw / 3.0f;
@@ -3048,7 +3064,7 @@ static void imm_emit(float x, float y, float z, float w)
     } else {
         float wv[16], wvp[16];
         mat_mul(st.mat[TS_WORLD], st.mat[TS_VIEW], wv);
-        mat_mul(wv, st.mat[TS_PROJECTION], wvp);
+        mat_mul(wv, projection(), wvp);
         for (int c = 0; c < 4; c++)
             o->pos[c] = x * wvp[c] + y * wvp[4 + c] + z * wvp[8 + c] + w * wvp[12 + c];
     }
