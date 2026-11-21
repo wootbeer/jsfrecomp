@@ -1034,6 +1034,24 @@ void sub_00229BD0(void)
 #define MAX_PROGRAMS 256
 static struct { uint32_t handle; jsf_vsh_program *prog; } programs[MAX_PROGRAMS];
 
+/* Declaration-only vertex shaders: CreateVertexShader(pDeclaration, NULL,
+ * ...) makes a fixed-function shader whose vertex layout the declaration
+ * gives (Jedi Starfighter draws with them; Orta never did). Each is kept
+ * as the FVF code with the same layout, and SetVertexShader puts that in
+ * st.vshader, so its draws take the fixed-function path. */
+#define MAX_DECL_SHADERS 256
+static struct { uint32_t handle, fvf; } decl_shaders[MAX_DECL_SHADERS];
+
+static uint32_t decl_fvf(uint32_t decl);
+
+static uint32_t decl_shader_fvf(uint32_t handle)
+{
+    for (int i = 0; i < MAX_DECL_SHADERS; i++)
+        if (decl_shaders[i].handle == handle)
+            return decl_shaders[i].fvf;
+    return 0;
+}
+
 static jsf_vsh_program *find_program(uint32_t handle)
 {
     for (int i = 0; i < MAX_PROGRAMS; i++)
@@ -1053,6 +1071,32 @@ void sub_00229920(void)
 
     sub_00229920_gen();
     handle = a[2] ? MEM32(a[2]) : 0;
+    if (handle && a[0] && !a[1]) {
+        uint32_t fvf = decl_fvf(a[0]);
+        int slot = -1;
+        for (int i = 0; i < MAX_DECL_SHADERS && slot < 0; i++)
+            if (decl_shaders[i].handle == handle || !decl_shaders[i].handle)
+                slot = i;
+        if (slot >= 0) {
+            decl_shaders[slot].handle = handle;
+            decl_shaders[slot].fvf = fvf;
+        }
+        if (!fvf) {
+            char line[256];
+            int len = SDL_snprintf(line, sizeof line, "d3d: declaration-only vertex shader 0x%08x not "
+                                   "drawn (no FVF like it):", handle);
+            for (uint32_t i = 0; i < 12 && len < 230; i++) {
+                uint32_t t = MEM32(a[0] + 4 * i);
+                len += SDL_snprintf(line + len, sizeof line - len, " %08x", t);
+                if (t == 0xFFFFFFFFu)
+                    break;
+            }
+            SDL_Log("%s", line);
+        } else {
+            SDL_Log("d3d: declaration-only vertex shader 0x%08x drawn as FVF 0x%x", handle, fvf);
+        }
+        return;
+    }
     if (!handle || !a[1])
         return;
     for (; a[0] && nd < 96; nd++)
@@ -1166,6 +1210,11 @@ void sub_00229E20(void)
     WRAP_BEGIN(1);
     sub_00229E20_gen();
     st.vshader = a[0];
+    if (a[0] & 1) {
+        uint32_t fvf = decl_shader_fvf(a[0]);
+        if (fvf)
+            st.vshader = fvf;
+    }
 }
 
 /* D3DDevice_SetTransform(State, pMatrix) */
@@ -1642,6 +1691,58 @@ static bool layout_fvf(uint32_t fvf, fvf_layout *l)
     }
     l->size = off;
     return true;
+}
+
+/* The FVF code a declaration matches, or 0. It must be one stream (0)
+ * whose registers come in FVF order with no gaps: position (FLOAT3, or
+ * FLOAT4 pretransformed), normal (FLOAT3), diffuse and specular
+ * (D3DCOLOR), texture coordinates 0.. (FLOAT1-4), each where FVF puts it. */
+static uint32_t decl_fvf(uint32_t decl)
+{
+    uint32_t fvf = 0, off = 0, stream = 0, ntc = 0;
+    int next = 0;       /* the next register FVF order allows: 0 pos, 2 normal, 3, 4, then 9.. */
+    fvf_layout l;
+
+    for (uint32_t i = 0; i < 64; i++) {
+        uint32_t t = MEM32(decl + 4 * i), kind = t >> 29;
+        if (t == 0xFFFFFFFFu)                    /* D3DVSD_END */
+            break;
+        if (kind == 1) {                         /* D3DVSD_STREAM(n) */
+            stream = t & 0xF;
+            if (stream != 0)
+                return 0;
+        } else if (kind == 2) {
+            uint32_t reg = t & 0x1F, type = (t >> 16) & 0xFF;
+            if (t & 0x10000000u)                 /* SKIP: no FVF has gaps */
+                return 0;
+            if (reg == 0 && next == 0 && (type == 0x32 || type == 0x42)) {
+                fvf |= type == 0x32 ? 0x002u : 0x004u;
+                off += type == 0x32 ? 12 : 16;
+                next = 2;
+            } else if (reg == 2 && next == 2 && type == 0x32) {
+                fvf |= 0x010u; off += 12; next = 3;
+            } else if (reg == 3 && next >= 2 && next <= 3 && type == 0x40) {
+                fvf |= 0x040u; off += 4; next = 4;
+            } else if (reg == 4 && next >= 2 && next <= 4 && type == 0x40) {
+                fvf |= 0x080u; off += 4; next = 9;
+            } else if (reg == 9 + ntc && next >= 2 && reg <= 12 && (type & 0x0F) == 0x2 &&
+                       (type >> 4) >= 1 && (type >> 4) <= 4) {
+                static const uint32_t code[5] = { 0, 3, 0, 1, 2 };     /* by float count: FVF size code */
+                fvf |= code[type >> 4] << (16 + 2 * ntc);
+                off += 4 * (type >> 4);
+                ntc++;
+                next = 9 + (int)ntc;
+            } else {
+                return 0;
+            }
+        } else if (kind != 0) {
+            return 0;                            /* constants, extensions */
+        }
+    }
+    fvf |= ntc << 8;
+    if (!(fvf & 0x00E) || !layout_fvf(fvf, &l) || l.size != off)
+        return 0;
+    return fvf;
 }
 
 /* D3DTSS_TEXCOORDINDEX: the coordinate set in the low word; the high word
@@ -2937,6 +3038,7 @@ void jsf_d3d_reboot(void)
     memset(&cur_rt, 0, sizeof cur_rt);
     cur_zformat = 0;
     memset(vconst, 0, sizeof vconst);
+    memset(decl_shaders, 0, sizeof decl_shaders);
     for (int i = 0; i < MAX_PROGRAMS; i++) {
         SDL_free(programs[i].prog);
         programs[i].prog = NULL;
