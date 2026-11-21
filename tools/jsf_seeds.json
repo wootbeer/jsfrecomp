@@ -18,5 +18,9 @@
   {"start": "0x00228C90", "observed": true, "note": "indirect call target at boot, D3D section (called through D3D's tables during device setup); not found by the static sweep"},
   {"start": "0x00228CB0", "observed": true, "note": "indirect call target at boot, D3D section (called through D3D's tables during device setup); not found by the static sweep"},
   {"start": "0x00228CD0", "observed": true, "note": "indirect call target at boot, D3D section (called through D3D's tables during device setup); not found by the static sweep"},
-  {"start": "0x00228D30", "observed": true, "note": "indirect call target at boot, D3D section (called through D3D's tables during device setup); not found by the static sweep"}
+  {"start": "0x00228D30", "observed": true, "note": "indirect call target at boot, D3D section (called through D3D's tables during device setup); not found by the static sweep"},
+  {"start": "0x0001FBD4", "observed": true, "note": "indirect call target in a level (owner's run); not found by the static sweep"},
+  {"start": "0x000E3A4B", "observed": true, "note": "indirect call target in a level (owner's run); not found by the static sweep"},
+  {"start": "0x0010F1D0", "observed": true, "note": "indirect call target in a level (owner's run); not found by the static sweep"},
+  {"start": "0x0016823E", "observed": true, "note": "indirect call target in a level (owner's run); not found by the static sweep"}
 ]

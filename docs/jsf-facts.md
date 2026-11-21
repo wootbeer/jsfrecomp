@@ -148,3 +148,19 @@ code 0x001FEB80 and 0x001FEC60.
   times a second each.
 - Input: the game passes 0x0027AED4 (gamepad type) to XInputOpen and
   XGetDeviceChanges, 0x0027AE38 (memory units) to XGetDevices.
+
+## Fourth run (into a level)
+
+- Logos, title and menus draw (menus about 257,000 draws per 5 s, all
+  drawn; 35 pixel shaders by then). The owner saw lines like scanlines
+  through the logo movies: to check (Bink's blitter, or the movie as
+  made).
+- In the level almost every draw was dropped (about 60,000 per 5 s):
+  the game's declaration-only shaders put each attribute in a stream of
+  its own (STREAM(0) position, STREAM(1) diffuse or normal, STREAM(2)
+  texture coordinates 0, STREAM(3) coordinates 1...). Now each draw
+  copies them together into one FVF vertex (`gather_decl`).
+- A shadow map: a 2048x1024 R5G6B5 target at 0x00408000, depth only,
+  compared with SHADOWFUNC 0x204.
+- Four more functions reached only indirectly in a level (0x0001FBD4,
+  0x000E3A4B, 0x0010F1D0, 0x0016823E): seeds.

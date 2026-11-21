@@ -12,8 +12,9 @@ window and ran 113 frames (every draw dropped), loaded DirectSound's
 effects image and crashed in SetLastError: the main thread's TIB in low
 guest memory had been wiped. With DirectSound ported
 (`dsound_hle.c`) it plays the LucasArts logo movie (Bink) at 30 fps with
-sound streams open. Draws through declaration-only vertex shaders were
-dropped; now drawn as their FVF. Input ported. The cloud has default.xbe
+sound streams open. The menus draw; a level was black
+(sound playing): its declaration-only vertex shaders spread a vertex over
+several streams, now copied together per draw. Input ported. The cloud has default.xbe
 only. Facts: `docs/jsf-facts.md`.
 
 ## How it fits together
@@ -47,7 +48,8 @@ only. Facts: `docs/jsf-facts.md`.
    NtReleaseMutant about 1.7 million a second each): a thread polling.
 3. `d3d_calltrace.c` from `tools/gen_d3d_calltrace.py --symbols
    build/xdk_symbols.txt`.
-4. Bink: watch for Mad Dash's garbled blocks (patch 0048 fixed theirs).
+4. Bink: lines like scanlines through the logo movies (owner's report):
+   a capture (F12) of a movie frame, then Bink's blitter or our texture.
 5. The app icon (`tools/make_icon.py`) is still Mad Dash's design.
 
 ## Testing
