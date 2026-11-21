@@ -1278,11 +1278,35 @@ static bool hud_viewport(float vp[4])
     return true;
 }
 
-/* How much the current draw's view is widened: 1 in a HUD viewport. */
-static float view_k(void)
+/* How the current draw's clip-space x is made wide: x' = k x + a (1 - k) w.
+ * k narrows the 4:3 view (so the view is wider); a is the point it is
+ * narrowed toward, in normalized x (-1 the left edge, 1 the right). The
+ * scene: a = 0. A 3D piece of the HUD drawn through an off-center
+ * projection over the whole screen (a perspective one whose axis is not
+ * the screen's middle: the camera's shift is m[8], m[9]) goes where the
+ * 2D around it goes (hud_anchor). In a HUD viewport (hud_viewport) the
+ * viewport is moved instead: k = 1. */
+static void view_widen(float *k, float *a)
 {
+    const float *m = st.mat[TS_PROJECTION];
     float vp[4];
-    return hud_viewport(vp) ? 1.0f : jsf_widescreen_k();
+
+    *k = jsf_widescreen_k();
+    *a = 0.0f;
+    if (*k == 1.0f || hud_viewport(vp)) {
+        *k = 1.0f;
+        return;
+    }
+    if (m[11] != 0.0f && m[15] == 0.0f && fabsf(m[8] / m[11]) > 0.05f) {
+        int rtw, rth;
+        float cx, cy, b[4];
+        target_size(&rtw, &rth);
+        cx = (m[8] / m[11] + 1.0f) * 0.5f * (float)rtw;
+        cy = (1.0f - m[9] / m[11]) * 0.5f * (float)rth;
+        b[0] = cx - 4.0f; b[2] = cx + 4.0f;
+        b[1] = cy - 4.0f; b[3] = cy + 4.0f;
+        *a = hud_anchor(b, rtw, rth);
+    }
 }
 
 /* The projection the draws use: the game's, with a perspective one's x
@@ -1292,13 +1316,14 @@ static float view_k(void)
 static const float *projection(void)
 {
     static float m[16];
-    float k = view_k();
+    float k, a;
 
+    view_widen(&k, &a);
     if (k == 1.0f || st.mat[TS_PROJECTION][11] == 0.0f)
         return st.mat[TS_PROJECTION];
     memcpy(m, st.mat[TS_PROJECTION], sizeof m);
     for (int r = 0; r < 4; r++)
-        m[r * 4] *= k;
+        m[r * 4] = k * m[r * 4] + a * (1.0f - k) * m[r * 4 + 3];
     return m;
 }
 
@@ -2266,9 +2291,18 @@ static void vsh_constants(const jsf_vsh_program *p, float scale[3], float offset
     offset[0] = x + w * 0.5f + 0.53125f; offset[1] = y + h * 0.5f + 0.53125f; offset[2] = zo;
     for (int k = 0; k < 3; k++) {
         if (p->viewport_read & 1)
-            vconst[58][k] = scale[k] * (k == 0 ? view_k() : 1.0f);   /* widescreen: a wider view */
+            vconst[58][k] = scale[k];
         if (p->viewport_read & 2)
             vconst[59][k] = offset[k];
+    }
+    if ((p->viewport_read & 3) == 3) {
+        /* Widescreen (view_widen): the program's x/w scaled by k and moved
+         * by a (1 - k), as the viewport transform it ends with; read back
+         * through the unchanged scale and offset, the clip x is k x + a (1 - k) w. */
+        float wk, wa;
+        view_widen(&wk, &wa);
+        vconst[58][0] = scale[0] * wk;
+        vconst[59][0] = offset[0] + wa * (1.0f - wk) * scale[0];
     }
     *zs_out = zs != 0.0f ? zs : 1.0f;
 }
