@@ -79,6 +79,7 @@ typedef struct jsf_vsh_program {
     jsf_vsh_input input[JSF_VSH_INPUTS];
     uint16_t      inputs_read;                   /* v registers the program reads */
     uint8_t       consts_read[JSF_VSH_CONSTANTS / 8]; /* c registers it reads (all: one through a0) */
+    uint8_t       viewport_read;                 /* bit 0: reads c[58] directly, bit 1: c[59] (not through a0) */
     bool          writes_constants;              /* then vertices must run in order */
     int32_t       gpu_program;                   /* renderer's copy (jsf_gfx_vsh_program), -1: none yet */
 } jsf_vsh_program;

@@ -238,7 +238,7 @@ static float side_gain(const voice *v, uint32_t bin)
 /* DirectSound 3936 sends a 3D voice to the crosstalk mixbins, XTLK_FL,
  * XTLK_FR, XTLK_BL, XTLK_BR (6-9), which the DSP's crosstalk stage puts on
  * the four corner speakers. Taken here as those speakers. Unmixed, every 3D
- * sound of Jedi Starfighter's (most of its effects) was heard only in the reverb. */
+ * sound of Mad Dash's (most of its effects) was heard only in the reverb. */
 static uint32_t speaker_of(uint32_t bin)
 {
     static const uint8_t corner[4] = { JSF_BIN_FRONT_LEFT, JSF_BIN_FRONT_RIGHT,

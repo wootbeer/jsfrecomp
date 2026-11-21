@@ -192,8 +192,11 @@ bool jsf_vsh_parse(jsf_vsh_program *p, const uint32_t *function, uint32_t functi
             if ((p->op[i].use & (1u << k)) && p->op[i].src[k].mux == MUX_C) {
                 if (p->op[i].rel)           /* c[a0.x + n]: any of them */
                     memset(p->consts_read, 0xFF, sizeof p->consts_read);
-                else if (p->op[i].cidx < JSF_VSH_CONSTANTS)
+                else if (p->op[i].cidx < JSF_VSH_CONSTANTS) {
                     p->consts_read[p->op[i].cidx >> 3] |= (uint8_t)(1u << (p->op[i].cidx & 7));
+                    if (p->op[i].cidx == 58 || p->op[i].cidx == 59)
+                        p->viewport_read |= (uint8_t)(1u << (p->op[i].cidx - 58));
+                }
             }
         if (p->op[i].o_mask && !p->op[i].orb)
             p->writes_constants = true;

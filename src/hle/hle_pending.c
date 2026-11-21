@@ -5,6 +5,5 @@
  * file comes back to src/hle/.
  */
 
-void jsf_d3d_reboot(void) {}
 void jsf_dsound_reboot(void) {}
 void jsf_input_reboot(void) {}

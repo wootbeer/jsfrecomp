@@ -16,7 +16,15 @@ Starfighter's; then drop its stub from `src/hle/hle_pending.c`.
 
 ## Done
 
-Nothing yet.
+`src/hle/d3d_hle.c`: Orta's, all its hooks at Jedi Starfighter's
+addresses (the frame clock, CreateDevice, Clear, Swap, KickOff,
+BlockOnTime, render targets, lighting, textures, streams, vertex and pixel
+shaders, transforms, viewport, the three draws), the render-state numbers
+re-derived (`docs/jsf-facts.md`), Orta's game-code hooks removed. Not
+found in this XBE, kept under `#if 0` with Orta's addresses: CopyRects,
+DrawIndexedVerticesUP, SetGammaRamp, Begin/SetVertexData/End. c[58]/c[59]
+(the viewport) are written only for programs that read them directly
+(Mad Dash Recomp's finding). Not yet run: the cloud has no game data.
 
 ## Steps
 
