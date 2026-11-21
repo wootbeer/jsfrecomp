@@ -270,3 +270,35 @@ bool jsf_guest_reboot(const uint8_t *launch_page, size_t launch_bytes)
     for (;;)
         SDL_Delay(60000);
 }
+
+/* The first thread's TIB sits in low guest memory (XBOX_TIB_MAIN), where a
+ * title's write through a null pointer can land: fs:[4] then reads 0 and
+ * XAPI's SetLastError faults on its TLS slot long after (a crash in
+ * 0x001C66E3 reading 0xFFFFFFEC). Checked at every vblank: the first time
+ * fs:[4] or the SEH head's high bits change, the log says so, with the
+ * frame, to narrow down the writer. */
+static uint32_t tib_word(uint32_t va)
+{
+    return *(volatile uint32_t *)((uintptr_t)g_xbox_mem_offset + va);
+}
+
+void jsf_guest_tib_watch(void)
+{
+    static uint32_t tls;
+    static bool reported;
+    uint32_t now = tib_word(XBOX_TIB_MAIN + 4);
+
+    if (reported)
+        return;
+    if (!tls) {
+        tls = now;
+        return;
+    }
+    if (now != tls) {
+        reported = true;
+        SDL_Log("guest: the main thread's TIB was overwritten by frame %llu: fs:[4] 0x%08X -> 0x%08X "
+                "(TIB words: %08X %08X %08X %08X)", (unsigned long long)jsf_gfx_frame_count(), tls, now,
+                tib_word(XBOX_TIB_MAIN), tib_word(XBOX_TIB_MAIN + 4), tib_word(XBOX_TIB_MAIN + 8),
+                tib_word(XBOX_TIB_MAIN + 12));
+    }
+}

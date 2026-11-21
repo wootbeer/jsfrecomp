@@ -247,6 +247,7 @@ static void run_vblank_callbacks(Uint64 index)
 void jsf_d3d_vblank_wait(void)
 {
     run_vblank_callbacks(wait_vblank());
+    jsf_guest_tib_watch();
     /* Loading screens and movies wait here for seconds without a Swap: keep
      * the window answering (Windows marks it "Not Responding" otherwise). */
     if (!jsf_gfx_pump_events()) {
@@ -385,6 +386,7 @@ void sub_0022ADF0(void)
     static Uint64 last_vblank;
     uint64_t n;
 
+    jsf_guest_tib_watch();
     jsf_widescreen_frame();     /* the aspect setting changed between 16:9 and 21:9 */
     hud_bars_before = hud_bars_frame;
     hud_bars_frame = false;

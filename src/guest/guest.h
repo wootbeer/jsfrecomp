@@ -14,6 +14,8 @@ const char *jsf_guest_game_dir(void);
 
 /* Run the title from its entry point. Returns when the title exits. */
 void jsf_guest_run(uint32_t entry);
+/* Log once if the main thread's TIB (low guest memory) is overwritten. */
+void jsf_guest_tib_watch(void);
 
 /* The guest CPU's registers live per host thread, and jsf_guest_init sets
  * them up on the thread that calls it. To run the title on another thread
