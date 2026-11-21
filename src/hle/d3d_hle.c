@@ -1040,16 +1040,25 @@ static struct { uint32_t handle; jsf_vsh_program *prog; } programs[MAX_PROGRAMS]
  * as the FVF code with the same layout, and SetVertexShader puts that in
  * st.vshader, so its draws take the fixed-function path. */
 #define MAX_DECL_SHADERS 256
-static struct { uint32_t handle, fvf; } decl_shaders[MAX_DECL_SHADERS];
+#define MAX_DECL_ATTRS   8
+typedef struct decl_shader {
+    uint32_t handle, fvf;
+    bool     gather;            /* attributes not where the FVF has them: copied together per draw */
+    uint32_t size;              /* the FVF vertex's bytes */
+    int      nattr;
+    struct { uint8_t stream; uint16_t src, dst, bytes; } attr[MAX_DECL_ATTRS];
+} decl_shader;
+static decl_shader decl_shaders[MAX_DECL_SHADERS];
+static const decl_shader *cur_decl;     /* the declaration-only shader set, when it must gather */
 
-static uint32_t decl_fvf(uint32_t decl);
+static bool decl_fvf(uint32_t decl, decl_shader *d);
 
-static uint32_t decl_shader_fvf(uint32_t handle)
+static const decl_shader *find_decl_shader(uint32_t handle)
 {
     for (int i = 0; i < MAX_DECL_SHADERS; i++)
-        if (decl_shaders[i].handle == handle)
-            return decl_shaders[i].fvf;
-    return 0;
+        if (decl_shaders[i].handle == handle && decl_shaders[i].fvf)
+            return &decl_shaders[i];
+    return NULL;
 }
 
 static jsf_vsh_program *find_program(uint32_t handle)
@@ -1072,14 +1081,17 @@ void sub_00229920(void)
     sub_00229920_gen();
     handle = a[2] ? MEM32(a[2]) : 0;
     if (handle && a[0] && !a[1]) {
-        uint32_t fvf = decl_fvf(a[0]);
+        decl_shader d;
+        uint32_t fvf = decl_fvf(a[0], &d) ? d.fvf : 0;
         int slot = -1;
         for (int i = 0; i < MAX_DECL_SHADERS && slot < 0; i++)
             if (decl_shaders[i].handle == handle || !decl_shaders[i].handle)
                 slot = i;
         if (slot >= 0) {
-            decl_shaders[slot].handle = handle;
-            decl_shaders[slot].fvf = fvf;
+            if (!fvf)
+                memset(&d, 0, sizeof d);
+            d.handle = handle;
+            decl_shaders[slot] = d;
         }
         if (!fvf) {
             char line[256];
@@ -1093,7 +1105,8 @@ void sub_00229920(void)
             }
             SDL_Log("%s", line);
         } else {
-            SDL_Log("d3d: declaration-only vertex shader 0x%08x drawn as FVF 0x%x", handle, fvf);
+            SDL_Log("d3d: declaration-only vertex shader 0x%08x drawn as FVF 0x%x%s", handle, fvf,
+                    d.gather ? ", its streams copied together" : "");
         }
         return;
     }
@@ -1210,10 +1223,13 @@ void sub_00229E20(void)
     WRAP_BEGIN(1);
     sub_00229E20_gen();
     st.vshader = a[0];
+    cur_decl = NULL;
     if (a[0] & 1) {
-        uint32_t fvf = decl_shader_fvf(a[0]);
-        if (fvf)
-            st.vshader = fvf;
+        const decl_shader *d = find_decl_shader(a[0]);
+        if (d) {
+            st.vshader = d->fvf;
+            cur_decl = d->gather ? d : NULL;
+        }
     }
 }
 
@@ -1693,56 +1709,95 @@ static bool layout_fvf(uint32_t fvf, fvf_layout *l)
     return true;
 }
 
-/* The FVF code a declaration matches, or 0. It must be one stream (0)
- * whose registers come in FVF order with no gaps: position (FLOAT3, or
- * FLOAT4 pretransformed), normal (FLOAT3), diffuse and specular
- * (D3DCOLOR), texture coordinates 0.. (FLOAT1-4), each where FVF puts it. */
-static uint32_t decl_fvf(uint32_t decl)
+/* The FVF a declaration's registers make, and where each attribute comes
+ * from. Registers FVF has: position 0 (FLOAT3, or FLOAT4 pretransformed),
+ * normal 2 (FLOAT3), diffuse 3 and specular 4 (D3DCOLOR), texture
+ * coordinates 9.. (FLOAT1-4, from 9 on without gaps); in any streams, any
+ * order. When they are all in stream 0 where the FVF puts them, the draw
+ * reads the stream as it is; otherwise (Jedi Starfighter keeps each in a
+ * stream of its own) each draw copies them together (gather_decl).
+ * False for anything else. */
+static bool decl_fvf(uint32_t decl, decl_shader *d)
 {
-    uint32_t fvf = 0, off = 0, stream = 0, ntc = 0;
-    int next = 0;       /* the next register FVF order allows: 0 pos, 2 normal, 3, 4, then 9.. */
+    uint32_t offset[16] = { 0 }, stream = 0, fvf = 0, ntc = 0;
+    int have_tc[4] = { -1, -1, -1, -1 }, src_of[16];
+    struct { uint8_t stream; uint16_t src, bytes; } at[16];
     fvf_layout l;
 
+    for (int r = 0; r < 16; r++)
+        src_of[r] = -1;
     for (uint32_t i = 0; i < 64; i++) {
         uint32_t t = MEM32(decl + 4 * i), kind = t >> 29;
         if (t == 0xFFFFFFFFu)                    /* D3DVSD_END */
             break;
         if (kind == 1) {                         /* D3DVSD_STREAM(n) */
             stream = t & 0xF;
-            if (stream != 0)
-                return 0;
         } else if (kind == 2) {
-            uint32_t reg = t & 0x1F, type = (t >> 16) & 0xFF;
-            if (t & 0x10000000u)                 /* SKIP: no FVF has gaps */
-                return 0;
-            if (reg == 0 && next == 0 && (type == 0x32 || type == 0x42)) {
-                fvf |= type == 0x32 ? 0x002u : 0x004u;
-                off += type == 0x32 ? 12 : 16;
-                next = 2;
-            } else if (reg == 2 && next == 2 && type == 0x32) {
-                fvf |= 0x010u; off += 12; next = 3;
-            } else if (reg == 3 && next >= 2 && next <= 3 && type == 0x40) {
-                fvf |= 0x040u; off += 4; next = 4;
-            } else if (reg == 4 && next >= 2 && next <= 4 && type == 0x40) {
-                fvf |= 0x080u; off += 4; next = 9;
-            } else if (reg == 9 + ntc && next >= 2 && reg <= 12 && (type & 0x0F) == 0x2 &&
-                       (type >> 4) >= 1 && (type >> 4) <= 4) {
-                static const uint32_t code[5] = { 0, 3, 0, 1, 2 };     /* by float count: FVF size code */
-                fvf |= code[type >> 4] << (16 + 2 * ntc);
-                off += 4 * (type >> 4);
-                ntc++;
-                next = 9 + (int)ntc;
-            } else {
-                return 0;
+            uint32_t reg = t & 0x1F, type = (t >> 16) & 0xFF, bytes;
+            if (t & 0x10000000u) {               /* SKIP: dwords, or bytes */
+                uint32_t n = (t >> 16) & 0xFF;
+                offset[stream] += (t & 0x08000000u) ? n : 4u * n;
+                continue;
             }
+            if (reg == 0 && (type == 0x32 || type == 0x42))
+                fvf |= type == 0x32 ? 0x002u : 0x004u;
+            else if (reg == 2 && type == 0x32)
+                fvf |= 0x010u;
+            else if (reg == 3 && type == 0x40)
+                fvf |= 0x040u;
+            else if (reg == 4 && type == 0x40)
+                fvf |= 0x080u;
+            else if (reg >= 9 && reg <= 12 && (type & 0x0F) == 0x2 && (type >> 4) >= 1 && (type >> 4) <= 4)
+                have_tc[reg - 9] = (int)(type >> 4);
+            else
+                return false;
+            if (src_of[reg] >= 0)
+                return false;
+            bytes = jsf_vsh_type_size((uint8_t)type);
+            src_of[reg] = (int)reg;
+            at[reg].stream = (uint8_t)stream;
+            at[reg].src = (uint16_t)offset[stream];
+            at[reg].bytes = (uint16_t)bytes;
+            offset[stream] += bytes;
         } else if (kind != 0) {
-            return 0;                            /* constants, extensions */
+            return false;                        /* constants, extensions */
         }
     }
+    for (int k = 0; k < 4; k++) {
+        static const uint32_t code[5] = { 0, 3, 0, 1, 2 };     /* by float count: FVF size code */
+        if (have_tc[k] < 0)
+            break;
+        fvf |= code[have_tc[k]] << (16 + 2 * k);
+        ntc++;
+    }
+    for (int k = (int)ntc; k < 4; k++)
+        if (have_tc[k] >= 0)
+            return false;                        /* a gap in the coordinate sets */
     fvf |= ntc << 8;
-    if (!(fvf & 0x00E) || !layout_fvf(fvf, &l) || l.size != off)
-        return 0;
-    return fvf;
+    if (!(fvf & 0x00E) || !layout_fvf(fvf, &l))
+        return false;
+
+    memset(d, 0, sizeof *d);
+    d->fvf = fvf;
+    d->size = l.size;
+    {
+        static const int regs[8] = { 0, 2, 3, 4, 9, 10, 11, 12 };
+        uint32_t dst[8] = { 0, l.normal_off, l.diffuse_off, l.specular_off,
+                            l.tc_off[0], l.tc_off[1], l.tc_off[2], l.tc_off[3] };
+        for (int k = 0; k < 8; k++) {
+            int r = regs[k];
+            if (src_of[r] < 0)
+                continue;
+            d->attr[d->nattr].stream = at[r].stream;
+            d->attr[d->nattr].src = at[r].src;
+            d->attr[d->nattr].dst = (uint16_t)dst[k];
+            d->attr[d->nattr].bytes = at[r].bytes;
+            if (at[r].stream != 0 || at[r].src != dst[k])
+                d->gather = true;
+            d->nattr++;
+        }
+    }
+    return true;
 }
 
 /* D3DTSS_TEXCOORDINDEX: the coordinate set in the low word; the high word
@@ -2756,10 +2811,60 @@ static void latch_normal(uint32_t base, uint32_t stride, uint32_t first, const u
     }
 }
 
+/* A declaration-only shader's attributes, from their streams, packed into
+ * one FVF vertex each in guest memory, vertices [first, first + count) at
+ * 0.. Stream 0 is the draw's own (a user-pointer draw passes it). Returns
+ * the copy's address, or 0. */
+static uint32_t gather_decl(const decl_shader *d, uint32_t base, uint32_t stride, uint32_t first,
+                            uint32_t count)
+{
+    static uint32_t buf, cap;
+    uint32_t sbase[16], sstride[16], need = d->size * count;
+
+    if (need > cap) {
+        uint32_t n = need * 2 > 0x10000u ? need * 2 : 0x10000u;
+        uint32_t b = xbox_HeapAlloc(n, 16);
+        if (!b)
+            return 0;
+        if (buf)
+            xbox_HeapFree(buf);
+        buf = b;
+        cap = n;
+    }
+    for (int s = 0; s < 16; s++) {
+        sbase[s] = st.vbs[s] ? MEM32(st.vbs[s] + 4) | 0x80000000u : 0;
+        sstride[s] = st.strides[s];
+    }
+    sbase[0] = base;
+    sstride[0] = stride;
+    for (int k = 0; k < d->nattr; k++)
+        if (!sbase[d->attr[k].stream])
+            return 0;
+    for (uint32_t v = 0; v < count; v++) {
+        uint8_t *out = (uint8_t *)XBOX_PTR(buf + v * d->size);
+        for (int k = 0; k < d->nattr; k++) {
+            uint32_t s = d->attr[k].stream;
+            memcpy(out + d->attr[k].dst, (const void *)XBOX_PTR(sbase[s] + (first + v) * sstride[s] + d->attr[k].src),
+                   d->attr[k].bytes);
+        }
+    }
+    return buf;
+}
+
 static void submit(uint32_t type, uint32_t base, uint32_t stride, uint32_t first, uint32_t count,
                    const uint32_t *order, uint32_t n)
 {
     Uint64 t = SDL_GetTicksNS();
+    if (cur_decl && count) {
+        uint32_t g = gather_decl(cur_decl, base, stride, first, count);
+        if (!g) {
+            draws_dropped++;
+            return;
+        }
+        base = g;
+        stride = cur_decl->size;
+        first = 0;
+    }
     submit_draw(type, base, stride, first, count, order, n);
     if (n)
         latch_normal(base, stride, first, order, n);
@@ -3039,6 +3144,7 @@ void jsf_d3d_reboot(void)
     cur_zformat = 0;
     memset(vconst, 0, sizeof vconst);
     memset(decl_shaders, 0, sizeof decl_shaders);
+    cur_decl = NULL;
     for (int i = 0; i < MAX_PROGRAMS; i++) {
         SDL_free(programs[i].prog);
         programs[i].prog = NULL;
