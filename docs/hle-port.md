@@ -24,7 +24,14 @@ re-derived (`docs/jsf-facts.md`), Orta's game-code hooks removed. Not
 found in this XBE, kept under `#if 0` with Orta's addresses: CopyRects,
 DrawIndexedVerticesUP, SetGammaRamp, Begin/SetVertexData/End. c[58]/c[59]
 (the viewport) are written only for programs that read them directly
-(Mad Dash Recomp's finding). Not yet run: the cloud has no game data.
+(Mad Dash Recomp's finding). First run on Windows: a window and frames;
+all draws dropped so far.
+
+`src/hle/dsound_hle.c`: Orta's, at the 34 entry points this game and Bink
+call (found by listing every call into the DSOUND section from outside
+it), the stream vtable's seven methods, and DirectSoundCreateBuffer (new).
+Orta's hooks for calls this game never makes, and its CRI 5.1 movie
+soundtracks, are not carried over. HRTF tables re-found.
 
 ## Steps
 

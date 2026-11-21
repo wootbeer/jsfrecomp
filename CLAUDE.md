@@ -25,8 +25,9 @@ address or name instead.
 - **xboxrecomp patches must not overlap.** `recomp.py` and CMake decide a
   patch is applied with `git apply --reverse --check`, one patch at a time.
   To change lines an earlier patch added, edit that patch instead.
-  There are 48 now: 0001-0043 as Orta Recomp's (0023 extended in Mad Dash
-  Recomp with the boot generation for 0047), 0044-0048 from Mad Dash Recomp.
+  There are 49 now: 0001-0043 as Orta Recomp's (0023 extended in Mad Dash
+  Recomp with the boot generation for 0047), 0044-0048 from Mad Dash Recomp,
+  0049 here.
 - **Third-party projects** (Cxbx-Reloaded and its XbSymbolDatabase, xemu,
   other ports): facts only, no code. Symbol databases and listings are read
   from a local clone at run time, never committed. Our own GPL code from
@@ -59,9 +60,11 @@ comment just above the function.
 ## Porting the XDK hooks
 
 Jedi Starfighter is **XDK 4361** (D3D8, DSOUND, XAPI all 4361).
-`src/hle/d3d_hle.c` is Orta's, re-addressed (render-state numbering as
-4134's: deferred states Orta's - 10, complex Orta's - 19; see its
-comments). The rest wait, neither built nor scanned for overrides:
+`src/hle/d3d_hle.c` and `src/hle/dsound_hle.c` are Orta's, re-addressed
+(render-state numbering as 4134's: deferred states Orta's - 10, complex
+Orta's - 19; DirectSound: the 34 entry points the game and Bink call, the
+stream vtable and DirectSoundCreateBuffer; see their comments). The rest
+wait, neither built nor scanned for overrides:
 
 - `src/hle/orta/`: Orta Recomp's (`d3d_hle.c`, `input_hle.c`,
   `wait_trace.c`, `dsound_hle.c`) at **Orta's addresses (XDK 4928)**. The
@@ -71,7 +74,7 @@ comments). The rest wait, neither built nor scanned for overrides:
   `stream_wait.c`) at **Mad Dash's addresses (XDK 3925/3936)**. For the
   pieces Orta lacks (push-buffer reader, Bink, warm reboot hooks).
 
-`src/hle/hle_pending.c` stubs the DirectSound and input reboot hooks until then. Every
+`src/hle/hle_pending.c` stubs the input reboot hook until then. Every
 `sub_XXXXXXXX`, `_gen`, `_enter` and every data address (`D3D__RenderState`,
 `D3D__pDevice`, back-buffer surfaces, texture slots, `RS_ENCODE`) must be
 re-found in Jedi Starfighter and the render-state indices re-derived from

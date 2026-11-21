@@ -98,3 +98,33 @@ default.xbe's (the only one recognised).
 
 Four sites here sign-extend now: Bink's 0x00271160 and 0x002721C0, game
 code 0x001FEB80 and 0x001FEC60.
+
+## Second run (D3D hooks, owner's Windows build)
+
+- A window: CreateDevice 640x480, back buffer format 0x7, flags 0x2A,
+  presentation interval 1; back buffers at 0x00236CEC and 0x00236D04.
+  113 frames at about 17 fps, 540 draws, all dropped (one vertex shader
+  0x010E66E1 set without CreateVertexShader).
+- The game reads `common.pak` a byte at a time (473,000 reads; patch
+  0049 stops logging each one).
+- Then `sound\dsstdfx.bin` (DirectSound's effects image, 24,824 bytes),
+  three opens of the disc root, and a crash in XAPI's SetLastError
+  (0x001C66E3): the main thread's TIB at guest 0x4000 had fs:[4] = 0, so
+  the TLS slot (index -5) read 0xFFFFFFEC. A null-pointer write wiped
+  low guest memory; the real DirectSound (no hooks yet then) driving an
+  absent audio processor is the likely writer. `jsf_guest_tib_watch`
+  logs the frame it happens.
+
+## DirectSound (DSOUND 4361)
+
+- Called from outside the DSOUND section: 34 entry points (game and
+  Bink), plus the audio processor's destructor 0x00248BAF through a
+  thunk (never reached with our objects). Streams are also called through
+  their vtable at 0x002BB644 (AddRef, Release, GetInfo, GetStatus,
+  Process, Discontinuity, Flush).
+- Every `ret N` as Orta's 4928. Mix bins are DSMIXBINS lists (as 4928).
+- DirectSoundCreateBuffer (0x002471B5) uses the library's internal
+  create (0x00247101) and CDirectSound::CreateSoundBuffer, so it has a
+  hook of its own.
+- HRTF tables: index 0x00260418 (row * 31 + column), 32-byte filter
+  pairs 0x0024EE58.
