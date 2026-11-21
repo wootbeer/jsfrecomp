@@ -12,7 +12,7 @@ folders):
   (`stream_wait.c`, Mad Dash's own game code: only the idea carries over).
 
 Each file goes back to `src/hle/` once every address in it is Jedi
-Starfighter's; then drop its stub from `src/hle/hle_pending.c`.
+Starfighter's.
 
 ## Done
 
@@ -32,6 +32,14 @@ call (found by listing every call into the DSOUND section from outside
 it), the stream vtable's seven methods, and DirectSoundCreateBuffer (new).
 Orta's hooks for calls this game never makes, and its CRI 5.1 movie
 soundtracks, are not carried over. HRTF tables re-found.
+
+`src/hle/input_hle.c`: Mad Dash's (Orta's plus XGetDeviceChanges on the
+type's masks) at XAPI 4361's addresses, with Orta's XInputSetState for
+vibration; the gamepad type the game passes is 0x0027AED4.
+
+Declaration-only vertex shaders (CreateVertexShader with no program): a
+fixed-function shader with the declaration's layout. Drawn as the FVF
+with the same layout when there is one (`decl_fvf`), logged otherwise.
 
 ## Steps
 

@@ -10,9 +10,11 @@ its paks and stopped in the real Direct3D's device set-up, waiting on the
 GPU (no window). With Orta's Direct3D hooks (`d3d_hle.c`) it opened a
 window and ran 113 frames (every draw dropped), loaded DirectSound's
 effects image and crashed in SetLastError: the main thread's TIB in low
-guest memory had been wiped. DirectSound is now ported too
-(`dsound_hle.c`), the likely fix; a TIB watch logs it if not. The cloud
-has default.xbe only. Facts: `docs/jsf-facts.md`.
+guest memory had been wiped. With DirectSound ported
+(`dsound_hle.c`) it plays the LucasArts logo movie (Bink) at 30 fps with
+sound streams open. Draws through declaration-only vertex shaders were
+dropped; now drawn as their FVF. Input ported. The cloud has default.xbe
+only. Facts: `docs/jsf-facts.md`.
 
 ## How it fits together
 
@@ -31,23 +33,22 @@ has default.xbe only. Facts: `docs/jsf-facts.md`.
 - `src/hle/d3d_hle.c`: Orta's Direct3D at JSF's addresses (XDK 4361,
   render states numbered as 4134; `docs/hle-port.md`).
 - `src/hle/dsound_hle.c`: Orta's DirectSound at JSF's addresses.
-- `src/hle/hle_pending.c`: the input reboot hook's stub. Orta's input
-  (`src/hle/orta/`, 4928) and Mad Dash's (`src/hle/maddash/`) wait to be
-  re-addressed.
+- `src/hle/input_hle.c`: Mad Dash's input (from Orta's) at XAPI 4361's
+  addresses, with vibration.
 - The log's first line names the commit built.
 
 ## Next
 
-1. Run with DirectSound on the full game (owner's Windows build): past
-   the crash? If the TIB watch fires, find the writer.
-2. Why every draw is dropped (the first: vertex shader 0x010E66E1 never
-   created through CreateVertexShader; others FVF or no stream?).
-   `JSF_D3D_TRACE=1` lists the first frames' calls.
-3. Input (XAPI 4361) from Orta's; drop its stub from `hle_pending.c`.
-4. `d3d_calltrace.c` from `tools/gen_d3d_calltrace.py --symbols
+1. A longer run on the full game, with a controller: the movies, the
+   title screen, the menus (Flash, "Strobe", `swf/`). Check the log for
+   "declaration-only vertex shader ... not drawn" and "FVF ... not
+   handled" lines.
+2. The steady kernel calls during the movie (NtWaitForSingleObjectEx and
+   NtReleaseMutant about 1.7 million a second each): a thread polling.
+3. `d3d_calltrace.c` from `tools/gen_d3d_calltrace.py --symbols
    build/xdk_symbols.txt`.
-5. Menus are Flash ("Strobe", `swf/`): see how they draw.
-6. The app icon (`tools/make_icon.py`) is still Mad Dash's design.
+4. Bink: watch for Mad Dash's garbled blocks (patch 0048 fixed theirs).
+5. The app icon (`tools/make_icon.py`) is still Mad Dash's design.
 
 ## Testing
 

@@ -128,3 +128,23 @@ code 0x001FEB80 and 0x001FEC60.
   hook of its own.
 - HRTF tables: index 0x00260418 (row * 31 + column), 32-byte filter
   pairs 0x0024EE58.
+
+## Third run (DirectSound hooks)
+
+- No crash: the 30 s test script closed it. DirectSound's effects image
+  accepted, three streams (pcm16 stereo 48 kHz, adpcm mono 22,050 Hz,
+  pcm16 stereo), then `autoexec.con`, `pc.con`, `ps2.con`, `cine.con`,
+  `util.con`, `fm.con`, `user.con` (the engine's console scripts) and
+  `Streams\Video\english\lecintro.bik`, played at 30 fps, one draw a
+  frame.
+- Before the movie every draw was dropped: vertex shader 0x010E66E1 was
+  made by CreateVertexShader(declaration, NULL): declaration-only. JSF's
+  CreateVertexShader keeps no raw program: the object is +0 refcount,
+  +4 flags (0x10 has a program, 1 not type 0x2078, 8 type 0x7378), +8
+  instructions, +0xC size in dwords, +0x1C 16 attribute slots, +0x114 the
+  push-buffer commands that load the program (chunks of 32 under method
+  0x0B00).
+- During the movie, kernel ordinals 234 and 221 run about 1.7 million
+  times a second each.
+- Input: the game passes 0x0027AED4 (gamepad type) to XInputOpen and
+  XGetDeviceChanges, 0x0027AE38 (memory units) to XGetDevices.

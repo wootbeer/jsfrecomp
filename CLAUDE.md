@@ -60,11 +60,12 @@ comment just above the function.
 ## Porting the XDK hooks
 
 Jedi Starfighter is **XDK 4361** (D3D8, DSOUND, XAPI all 4361).
-`src/hle/d3d_hle.c` and `src/hle/dsound_hle.c` are Orta's, re-addressed
-(render-state numbering as 4134's: deferred states Orta's - 10, complex
-Orta's - 19; DirectSound: the 34 entry points the game and Bink call, the
-stream vtable and DirectSoundCreateBuffer; see their comments). The rest
-wait, neither built nor scanned for overrides:
+`src/hle/d3d_hle.c`, `dsound_hle.c` and `input_hle.c` are Orta's,
+re-addressed (render-state numbering as 4134's: deferred states Orta's -
+10, complex Orta's - 19; DirectSound: the 34 entry points the game and
+Bink call, the stream vtable and DirectSoundCreateBuffer; input by way of
+Mad Dash's, for XGetDeviceChanges; see their comments). The originals
+stay for reference, neither built nor scanned for overrides:
 
 - `src/hle/orta/`: Orta Recomp's (`d3d_hle.c`, `input_hle.c`,
   `wait_trace.c`, `dsound_hle.c`) at **Orta's addresses (XDK 4928)**. The
@@ -74,7 +75,7 @@ wait, neither built nor scanned for overrides:
   `stream_wait.c`) at **Mad Dash's addresses (XDK 3925/3936)**. For the
   pieces Orta lacks (push-buffer reader, Bink, warm reboot hooks).
 
-`src/hle/hle_pending.c` stubs the input reboot hook until then. Every
+Every
 `sub_XXXXXXXX`, `_gen`, `_enter` and every data address (`D3D__RenderState`,
 `D3D__pDevice`, back-buffer surfaces, texture slots, `RS_ENCODE`) must be
 re-found in Jedi Starfighter and the render-state indices re-derived from
