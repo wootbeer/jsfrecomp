@@ -14,14 +14,17 @@ guest memory had been wiped. With DirectSound ported
 (`dsound_hle.c`) it plays the LucasArts logo movie (Bink) at 30 fps with
 sound streams open. The menus draw; a level was black
 (sound playing): its declaration-only vertex shaders spread a vertex over
-several streams, now copied together per draw. Input ported. The cloud has default.xbe
+several streams, now copied together per draw. Then a level load froze
+at 90 %: the CRT's tan() looping on a stale x87 C2 (patch 0050). Input
+ported. The cloud has default.xbe
 only. Facts: `docs/jsf-facts.md`.
 
 ## How it fits together
 
 - `tools/recomp.py`: the USA `default.xbe` (or the ISO) -> `gen/` through
   xboxrecomp and patches 0001-0049 (0048: movsx from bp/sp, from Mad
-  Dash; 0049: file reads logged only up to 2000, then failures). Data sections `.data`, `DOLBY` and `BINKDATA` are excluded from
+  Dash; 0049: file reads logged only up to 2000, then failures; 0050:
+  x87 transcendentals and fprem clear C2, or the CRT's tan() looped). Data sections `.data`, `DOLBY` and `BINKDATA` are excluded from
   the code sweep. 20 seeds from boots (`tools/jsf_seeds.json`).
 - `src/xbe.c`, `tools/recomp.py`: title ID 4C410005, the one known dump
   hash and the section layout (keep the two in step).

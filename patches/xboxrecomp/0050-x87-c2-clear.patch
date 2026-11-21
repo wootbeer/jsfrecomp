@@ -1,0 +1,53 @@
+x87: fsin, fcos, fsincos, fptan, fprem, fprem1 clear C2
+
+The C runtime loops on C2 after these (tan(): fptan, then fnstsw/sahf/jp
+reduces the argument with fprem1 until C2 is clear). Lifted without
+touching the condition codes, the jp read what an earlier compare left;
+after an unordered one, tan() never returned (Jedi Starfighter froze
+loading a level). Each now leaves the condition codes clear.
+
+--- a/tools/recomp/lifter.py
++++ b/tools/recomp/lifter.py
+@@ -3698,19 +3698,29 @@
+         # These are exact-enough mappings onto libm. The 80-bit intermediates of
+         # real x87 are not reproduced -- fp_stack is double -- which is the same
+         # approximation every other op here already makes.
++        # fsin, fcos, fsincos, fptan, fprem and fprem1 clear C2 when they
++        # complete (C2 set means "argument out of range" or "partial
++        # remainder"), and the C runtime loops on it: its tan() runs fptan,
++        # then `fnstsw ax; sahf; jp` reduces the argument with fprem1 until
++        # C2 is clear. Lifted without touching the condition codes, the jp
++        # read whatever an earlier compare left: after an unordered one
++        # (C2 = 1) Jedi Starfighter's tan() never returned and a level load
++        # froze. Each now leaves C0-C3 clear, as a complete result does (C1
++        # aside; C0/C1/C3 hold quotient bits after fprem, undefined after
++        # the others; nothing reads them).
+         if m == "fsin":
+-            return [f"fp_top() = sin(fp_top()); /* fsin */"]
++            return [f"fp_top() = sin(fp_top()); g_fp_cmp = 1; g_fp_cc = 0; /* fsin */"]
+         if m == "fcos":
+-            return [f"fp_top() = cos(fp_top()); /* fcos */"]
++            return [f"fp_top() = cos(fp_top()); g_fp_cmp = 1; g_fp_cc = 0; /* fcos */"]
+         if m == "fsincos":
+             # Replaces st0 with sin, then pushes cos. Order matters: the push
+             # must see the sine already stored.
+             return [f"{{ double _a = fp_top(); fp_top() = sin(_a);"
+-                    f" fp_push(cos(_a)); }} /* fsincos */"]
++                    f" fp_push(cos(_a)); g_fp_cmp = 1; g_fp_cc = 0; }} /* fsincos */"]
+         if m == "fptan":
+             # st0 = tan(st0), then push 1.0. The constant push is not decoration:
+             # callers use it as the denominator of a subsequent fdiv.
+-            return [f"{{ fp_top() = tan(fp_top()); fp_push(1.0); }} /* fptan */"]
++            return [f"{{ fp_top() = tan(fp_top()); fp_push(1.0); g_fp_cmp = 1; g_fp_cc = 0; }} /* fptan */"]
+         if m == "fpatan":
+             # st1 = atan2(st1, st0), pop. Argument order is st1 over st0.
+             return [f"{{ fp_st1() = atan2(fp_st1(), fp_top()); fp_pop(); }}"
+@@ -3729,7 +3739,7 @@
+             # fprem truncates toward zero, fprem1 rounds to nearest (IEEE), which
+             # is the difference between fmod and remainder.
+             fn = "fmod" if m == "fprem" else "remainder"
+-            return [f"fp_top() = {fn}(fp_top(), fp_st1()); /* {m} */"]
++            return [f"fp_top() = {fn}(fp_top(), fp_st1()); g_fp_cmp = 1; g_fp_cc = 0; /* {m} */"]
+         if m == "fscale":
+             return [f"fp_top() = ldexp(fp_top(), (int)fp_st1()); /* fscale */"]
+         if m == "frndint":

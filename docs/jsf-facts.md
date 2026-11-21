@@ -164,3 +164,14 @@ code 0x001FEB80 and 0x001FEC60.
   compared with SHADOWFUNC 0x204.
 - Four more functions reached only indirectly in a level (0x0001FBD4,
   0x000E3A4B, 0x0010F1D0, 0x0016823E): seeds.
+
+## Fifth run (level load)
+
+- Every draw drawn (declaration shaders as FVF 0x2..0x252, streams copied
+  together). The training level's load stopped at about 90 %, after the
+  dialog streams (`streams\dialog\english\...\*_adi.wav`) and a failed
+  open of `t01.pak` (not on the disc: optional?).
+- The main thread spun in the CRT's tan() (0x00203C5D): fptan, then
+  `fnstsw ax; sahf; jp` and fprem1 until C2 clears; neither lifted
+  instruction set C2, so a stale unordered compare kept the loop going.
+  Patch 0050: 28 sites in this XBE.
