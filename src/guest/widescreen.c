@@ -13,14 +13,20 @@
  * with HUD Edges out toward the sides (hud_squeeze); anything as wide as
  * the screen (backgrounds, fades, the letterbox, movies) stretched.
  *
- * The game still culls to its own 4:3 view: things can appear late at
- * the far left and right. Its camera (an object whose +0x154 holds 4/3
- * and +0x158 0.75, set up at 0x0005DDD5) is the place to widen that.
+ * The game culls to its view frustum (0x000169BF), built from its camera:
+ * that is widened too (below), or the sun's glow and whatever else it
+ * tests went out near the wide screen's sides while still in view. The
+ * camera itself (its projection, 0x0001F8BD; world to screen, 0x000271ED)
+ * stays 4:3, so the 2D the game places with it lines up with the squeezed
+ * HUD.
  *
  * The setting switches at the next frame.
  */
 
+#include "recomp_types.h"
 #include "config.h"
+
+#include <math.h>
 
 bool jsf_widescreen_active(void)
 {
@@ -45,3 +51,34 @@ float jsf_widescreen_k(void)
 
 bool jsf_widescreen_needs_restart(void) { return false; }
 void jsf_widescreen_frame(void) {}
+
+/* The view frustum from a perspective camera (thiscall, the frustum in
+ * ecx; the camera, argument 0; `ret 4`; called from 0x0001A5C8). It takes
+ * sin and cos of half the camera's horizontal field of view (+0x90,
+ * radians) for the side planes and its height over width (+0x94, 0.75)
+ * for the top and bottom. For widescreen the camera is lent a field of
+ * view as much wider as the screen is, with the height over width
+ * narrowed to match so the vertical view is the same, and given back
+ * after: the culling then covers what the wide picture shows. */
+extern void sub_000169BF_gen(void);
+void sub_000169BF(void)
+{
+    uint32_t cam = MEM32(g_esp + 4);
+    float k = jsf_widescreen_k(), fov, aspect;
+
+    if (k >= 1.0f || !cam) {
+        sub_000169BF_gen();
+        return;
+    }
+    fov = MEMF(cam + 0x90);
+    aspect = MEMF(cam + 0x94);
+    if (!(fov > 0.0f && fov < 3.1f)) {
+        sub_000169BF_gen();
+        return;
+    }
+    MEMF(cam + 0x90) = 2.0f * atanf(tanf(0.5f * fov) / k);
+    MEMF(cam + 0x94) = aspect * k;
+    sub_000169BF_gen();
+    MEMF(cam + 0x90) = fov;
+    MEMF(cam + 0x94) = aspect;
+}

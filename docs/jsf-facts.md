@@ -224,3 +224,11 @@ code 0x001FEB80 and 0x001FEC60.
   calls tan at 0x00027214). Widening the camera there would double the
   squeeze of the 2D the game places with it (brackets); the visibility
   tests themselves are still to be found.
+- The view frustum: 0x000169BF (thiscall, frustum in ecx, camera as
+  argument, `ret 4`; from 0x0001A5C8 for a perspective camera, +0x98 0):
+  sin/cos of half the camera's horizontal field of view (+0x90, radians)
+  for the side planes, +0x94 (height/width) for the top and bottom. The
+  render camera's projection is built at 0x0001F8BD (tan(+0x90 / 2) *
+  near +0x88, far +0x8C, an off-center perspective through D3DX, then
+  SetTransform). Widescreen lends the frustum builder a wider field of
+  view (`widescreen.c`); the projection and 0x000271ED stay 4:3.
