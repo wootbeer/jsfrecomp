@@ -1247,6 +1247,44 @@ void sub_00226830(void)
     sub_00226830_gen();
 }
 
+static bool hud_menu(void);
+static float hud_anchor(const float b[4], int rtw, int rth);
+static void target_size(int *w, int *h);
+
+/* Widescreen: a 3D draw into a viewport smaller than the screen it draws
+ * on (the target display's ship, inside its round HUD frame) is part of
+ * the HUD. Its viewport is narrowed and moved as the 2D around it is
+ * (hud_anchor), and its view is not widened: so the model keeps its shape
+ * and stays inside its frame. True, with the viewport to draw at, when
+ * this draw is one. */
+static bool hud_viewport(float vp[4])
+{
+    int rtw, rth;
+    float b[4], k, at;
+
+    if (!jsf_widescreen_active() || !st.have_viewport || cur_rt.data)
+        return false;
+    target_size(&rtw, &rth);
+    if ((float)st.vp_w >= 0.9f * (float)rtw && (float)st.vp_h >= 0.9f * (float)rth)
+        return false;
+    b[0] = (float)st.vp_x; b[1] = (float)st.vp_y;
+    b[2] = b[0] + (float)st.vp_w; b[3] = b[1] + (float)st.vp_h;
+    k = jsf_widescreen_k();
+    at = (hud_anchor(b, rtw, rth) + 1.0f) * 0.5f * (float)rtw;
+    vp[0] = at + (b[0] - at) * k;
+    vp[1] = b[1];
+    vp[2] = (float)st.vp_w * k;
+    vp[3] = (float)st.vp_h;
+    return true;
+}
+
+/* How much the current draw's view is widened: 1 in a HUD viewport. */
+static float view_k(void)
+{
+    float vp[4];
+    return hud_viewport(vp) ? 1.0f : jsf_widescreen_k();
+}
+
 /* The projection the draws use: the game's, with a perspective one's x
  * scale narrowed for widescreen (src/guest/widescreen.c), so the view is
  * wider. Row vectors: x is column 0. An orthographic one (no w from z) is
@@ -1254,7 +1292,7 @@ void sub_00226830(void)
 static const float *projection(void)
 {
     static float m[16];
-    float k = jsf_widescreen_k();
+    float k = view_k();
 
     if (k == 1.0f || st.mat[TS_PROJECTION][11] == 0.0f)
         return st.mat[TS_PROJECTION];
@@ -1634,12 +1672,15 @@ static void fill_draw_state(jsf_draw *d, bool pretransformed)
         d->viewport[3] = (float)rth;
         d->viewport[5] = 1.0f;
     } else {
+        float hv[4];
         d->viewport[0] = (float)st.vp_x;
         d->viewport[1] = (float)st.vp_y;
         d->viewport[2] = (float)st.vp_w;
         d->viewport[3] = (float)st.vp_h;
         d->viewport[4] = st.vp_minz;
         d->viewport[5] = st.vp_maxz;
+        if (hud_viewport(hv))
+            memcpy(d->viewport, hv, sizeof hv);
     }
 }
 
@@ -2225,7 +2266,7 @@ static void vsh_constants(const jsf_vsh_program *p, float scale[3], float offset
     offset[0] = x + w * 0.5f + 0.53125f; offset[1] = y + h * 0.5f + 0.53125f; offset[2] = zo;
     for (int k = 0; k < 3; k++) {
         if (p->viewport_read & 1)
-            vconst[58][k] = scale[k] * (k == 0 ? jsf_widescreen_k() : 1.0f);   /* widescreen: a wider view */
+            vconst[58][k] = scale[k] * (k == 0 ? view_k() : 1.0f);   /* widescreen: a wider view */
         if (p->viewport_read & 2)
             vconst[59][k] = offset[k];
     }
@@ -2495,9 +2536,38 @@ static bool hud_sprite(uint32_t base, uint32_t stride, uint32_t first, uint32_t 
  * placed by the camera (the reticle, lock-on marks) are not sprites of the
  * routine. The factor in *k (1: none) and the point it is about, in
  * normalised x (-1 left, 0 middle, 1 right), in *anchor. */
+/* Where a HUD piece with these bounds (x0, y0, x1, y1, the game's pixels)
+ * is squeezed toward: -1 the left edge, 1 the right, 0 the middle. With
+ * HUD Edges, a piece in the top or bottom third and in a side third goes
+ * to that side, unless a menu is up; so does a marker against a side. */
+static float hud_anchor(const float b[4], int rtw, int rth)
+{
+    float w3 = (float)rtw / 3.0f, margin = 0.06f * (float)rtw;
+
+    /* A small piece against the side of the 4:3 screen -- the markers that
+     * point at targets off the screen -- stays against that side of the
+     * wide one, HUD centered or not; in the top or bottom third only with
+     * HUD Edges, where the centered HUD keeps its corner panels. */
+    if (!hud_menu() && b[2] - b[0] < (float)rtw / 5.0f &&
+        (jsf_settings_get()->hud_edges || (b[1] > (float)rth / 4.0f && b[3] < 3.0f * (float)rth / 4.0f))) {
+        if (b[0] <= margin)
+            return -1.0f;
+        if (b[2] >= (float)rtw - margin)
+            return 1.0f;
+    }
+    if (!jsf_settings_get()->hud_edges || hud_menu() ||
+        !(b[3] <= (float)rth / 3.0f || b[1] >= 2.0f * (float)rth / 3.0f))
+        return 0.0f;
+    if (b[0] < w3 && b[2] <= 2.0f * w3)
+        return -1.0f;
+    if (b[2] > 2.0f * w3 && b[0] >= w3)
+        return 1.0f;
+    return 0.0f;
+}
+
 static void hud_squeeze(uint32_t base, uint32_t stride, uint32_t first, uint32_t count, float *k, float *anchor)
 {
-    float b[4], w3;
+    float b[4];
     int rtw, rth;
 
     *k = 1.0f;
@@ -2518,14 +2588,7 @@ static void hud_squeeze(uint32_t base, uint32_t stride, uint32_t first, uint32_t
         return;                 /* as wide as the screen */
     }
     *k = jsf_widescreen_k();
-    if (jsf_settings_get()->hud_edges && !hud_menu() &&
-        (b[3] <= (float)rth / 3.0f || b[1] >= 2.0f * (float)rth / 3.0f)) {
-        w3 = (float)rtw / 3.0f;
-        if (b[0] < w3 && b[2] <= 2.0f * w3)
-            *anchor = -1.0f;
-        else if (b[2] > 2.0f * w3 && b[0] >= w3)
-            *anchor = 1.0f;
-    }
+    *anchor = hud_anchor(b, rtw, rth);
 }
 
 /* What became of a draw that looked like the cutscene bars, for the log:

@@ -51,9 +51,9 @@ only. Facts: `docs/jsf-facts.md`.
 ## Next
 
 1. Widescreen on the owner's machine: the view wider, the HUD the right
-   shape, full-width 2D (letterbox, fades, movies) stretched. Pop-in at
-   the sides would mean widening the game's culling: its camera object
-   (+0x154 4/3, +0x158 0.75; set up at 0x0005DDD5).
+   shape, full-width 2D (letterbox, fades, movies) stretched. The sun's
+   glow vanishes near the sides (the game's 4:3 visibility test; its
+   world-to-screen projection is 0x000271ED, `jsf-facts.md`).
 2. Frame interpolation (F1 > Advanced) on this game: artifacts?
 3. More levels: `[ICALL] Failed` lines into the seeds.
 4. Camera-space reflection texture coordinates (TCI 0x30000) are not

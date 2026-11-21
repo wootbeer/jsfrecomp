@@ -210,3 +210,17 @@ code 0x001FEB80 and 0x001FEC60.
   (x scale 3/4 of y). A camera object keeps 4/3 at +0x154 and 0.75 at
   +0x158 (constructor at 0x0005DDD5; copied at 0x0005698D, 0x00063DB2).
 - 2D is drawn pretransformed (FVF XYZRHW).
+
+## Widescreen (first look on the owner's machine)
+
+- The HUD's round panels go to the sides with HUD Edges. The target
+  display's ship is 3D drawn into a small viewport inside a 2D frame: it
+  now follows the 2D (`hud_viewport`). The off-screen target markers sit
+  against the 4:3 screen's sides: kept against the wide screen's.
+- The sun's glow vanishes near the wide screen's sides: the game decides
+  the sun is off its 4:3 screen. The world-to-screen projection is
+  0x000271ED (thiscall, camera in ecx; +0x90 horizontal field of view,
+  +0x94 height/width 0.75, +8 and +0xC the screen size in pixels; it
+  calls tan at 0x00027214). Widening the camera there would double the
+  squeeze of the 2D the game places with it (brackets); the visibility
+  tests themselves are still to be found.
