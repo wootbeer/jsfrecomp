@@ -238,3 +238,14 @@ code 0x001FEB80 and 0x001FEC60.
   only stretched by widescreen (oval rings). The target display's ship is
   a perspective draw with a centered projection, posed by its world
   matrix to sit in its ring, drawn after the HUD's 2D.
+
+## The zoomed menus
+
+- The profile menu came out zoomed in about 1.25 times, cut off at all
+  four sides, at any aspect. Not widescreen: the lifter read a 10-byte
+  `fld tbyte` as a 32-bit float and stored nothing for `fstp tbyte`, and
+  the C runtime keeps its x87 constants and spills that way (39 sites:
+  exp at 0x00208A6A and its table 0x0033A672, tan's 0x002C258E...). The
+  menus' Flash easing calls exp. While exp's entry points were missing
+  (before the seeds) it returned its argument and the menus looked right.
+  Patch 0052.

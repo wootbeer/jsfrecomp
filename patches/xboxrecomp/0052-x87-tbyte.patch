@@ -1,0 +1,86 @@
+x87: fld and fstp tbyte (extended precision)
+
+A 10-byte fld was lifted as a 32-bit float read, and a 10-byte fstp
+stored nothing. The C runtime keeps its x87 math constants and spills
+this way (39 sites in Jedi Starfighter: exp, tan and friends), so those
+came out wrong; its Flash menus, eased with exp, were drawn zoomed in.
+recomp_ld80/recomp_st80 convert between the x87 format and double.
+
+--- a/templates/runtime/recomp_types.h
++++ b/templates/runtime/recomp_types.h
+@@ -441,6 +441,50 @@
+ #define MEMF(addr)   (*(volatile float    *)XBOX_PTR(addr))
+ #define MEMD(addr)   (*(volatile double   *)XBOX_PTR(addr))
+ 
++/* x87 extended precision in memory (fld/fstp tbyte): 64-bit significand
++ * with its integer bit, 15-bit exponent biased by 16383, sign. Read into
++ * and written from the double the lifted FPU stack holds. */
++static inline double recomp_ld80(uint32_t addr)
++{
++    const volatile uint8_t *p = (const volatile uint8_t *)XBOX_PTR(addr);
++    uint64_t m = 0;
++    uint32_t se = (uint32_t)p[8] | (uint32_t)p[9] << 8, e = se & 0x7FFFu;
++    double v;
++    for (int i = 7; i >= 0; i--)
++        m = m << 8 | p[i];
++    if (e == 0x7FFFu)
++        v = (m << 1) ? (double)NAN : (double)INFINITY;
++    else if (e == 0 && m == 0)
++        v = 0.0;
++    else
++        v = ldexp((double)m, (int)e - 16383 - 63);
++    return (se & 0x8000u) ? -v : v;
++}
++
++static inline void recomp_st80(uint32_t addr, double v)
++{
++    volatile uint8_t *p = (volatile uint8_t *)XBOX_PTR(addr);
++    uint64_t m = 0;
++    uint32_t se = signbit(v) ? 0x8000u : 0u;
++    double a = fabs(v);
++    if (isnan(v)) {
++        se |= 0x7FFFu;
++        m = 0xC000000000000000ull;
++    } else if (isinf(v)) {
++        se |= 0x7FFFu;
++        m = 0x8000000000000000ull;
++    } else if (a != 0.0) {
++        int e;
++        double f = frexp(a, &e);                 /* a = f * 2^e, f in [0.5, 1) */
++        m = (uint64_t)ldexp(f, 64);              /* the integer bit on top */
++        se |= (uint32_t)(e - 1 + 16383) & 0x7FFFu;
++    }
++    for (int i = 0; i < 8; i++)
++        p[i] = (uint8_t)(m >> (8 * i));
++    p[8] = (uint8_t)se;
++    p[9] = (uint8_t)(se >> 8);
++}
++
+ /* ================================================================
+  * SSE / XMM register state
+  *
+--- a/tools/recomp/lifter.py
++++ b/tools/recomp/lifter.py
+@@ -3548,6 +3548,11 @@
+                         return [f"fp_push(MEMF({_fmt_mem(ops[0])})); /* fld float */"]
+                     elif ops[0].mem_size == 8:
+                         return [f"fp_push(MEMD({_fmt_mem(ops[0])})); /* fld double */"]
++                    elif ops[0].mem_size == 10:
++                        # tbyte: x87 extended precision. Read as a float it
++                        # was garbage; the C runtime's exp, tan and friends
++                        # keep their constants and spills this way.
++                        return [f"fp_push(recomp_ld80({_fmt_mem(ops[0])})); /* fld tbyte */"]
+                     return [f"fp_push(MEMF({_fmt_mem(ops[0])})); /* fld */"]
+                 if ops[0].type == "reg":
+                     # fld st(i) pushes a COPY of st(i). Was a no-op comment,
+@@ -3575,6 +3580,10 @@
+                     return [f"MEMF({_fmt_mem(ops[0])}) = (float)fp_top();{do_pop} /* {m} */"]
+                 elif ops[0].mem_size == 8:
+                     return [f"MEMD({_fmt_mem(ops[0])}) = fp_top();{do_pop} /* {m} */"]
++                elif ops[0].mem_size == 10:
++                    # tbyte: stored nothing before (it fell through to the
++                    # register forms), so a spill read back was stale.
++                    return [f"recomp_st80({_fmt_mem(ops[0])}, fp_top());{do_pop} /* {m} tbyte */"]
+             # fst/fstp st(i): copy st0 to st(i); fstp then pops. This used to be
+             # a bare comment -- a no-op -- which LEAKS the FPU stack. `fstp st(0)`
+             # is the common idiom for "pop the value fptan/fsincos just pushed";
