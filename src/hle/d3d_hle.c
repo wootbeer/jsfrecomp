@@ -70,6 +70,11 @@ static uint32_t draws_called, draws_drawn, draws_dropped;
  * toward. A perspective draw whose origin lands inside one -- the target
  * display's ship, posed by its world matrix to sit in its ring -- is a 3D
  * piece of the HUD and goes where that piece went. Cleared at Swap. */
+/* 3D draws on the screen (perspective, not pieces of the HUD) this frame
+ * and the last: a menu with a 3D scene behind it (the title over the
+ * attract demo) stretches its full-width pieces with the scene. */
+static uint32_t scene_draws, scene_draws_last;
+
 #define MAX_HUD_BOXES 64
 static struct { float b[4], anchor; } hud_boxes[MAX_HUD_BOXES];
 static int nhud_boxes;
@@ -397,6 +402,8 @@ void sub_0022ADF0(void)
 
     jsf_guest_tib_watch();
     nhud_boxes = 0;
+    scene_draws_last = scene_draws;
+    scene_draws = 0;
     jsf_widescreen_frame();     /* the aspect setting changed between 16:9 and 21:9 */
     hud_bars_before = hud_bars_frame;
     hud_bars_frame = false;
@@ -2699,9 +2706,10 @@ static void hud_squeeze(uint32_t base, uint32_t stride, uint32_t first, uint32_t
             snprintf(hud_menu_why, sizeof hud_menu_why, "a full-screen sprite, %u vertices, texture %08x, color %08x",
                      count, st.tex[0] ? MEM32(st.tex[0] + 4) : 0u, c);
         }
-        /* A menu screen keeps its 4:3 shape in the middle (below);
-         * otherwise as wide as the screen */
-        if (!hud_menu())
+        /* A menu screen keeps its 4:3 shape in the middle (below), unless
+         * a 3D scene fills the screen behind it; otherwise as wide as the
+         * screen */
+        if (!hud_menu() || scene_draws_last >= 30)
             return;
     }
     /* A menu screen (a full-screen backdrop for a while: hud_menu): every
@@ -2796,6 +2804,8 @@ static void submit_draw(uint32_t type, uint32_t base, uint32_t stride, uint32_t 
     float hud_k, hud_at;                    /* a HUD sprite's squeeze, on a wider screen, and about where */
 
     state_init();
+    if (!cur_rt.data && ((st.vshader & 1) || ((st.vshader & 0x00E) != 0x004 && st.mat[TS_PROJECTION][11] != 0.0f)))
+        scene_draws++;
     if (nhud_boxes < MAX_HUD_BOXES && !(st.vshader & 1) && (st.vshader & 0x00E) != 0x004 && hud_ortho()) {
         /* a HUD piece (not a full-width backdrop), for 3D drawn inside it */
         float b[4];
