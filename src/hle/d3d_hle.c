@@ -65,11 +65,14 @@ static void note_backbuffers(void);
  * runs it one thread at a time: plain counters. */
 static uint32_t draws_called, draws_drawn, draws_dropped;
 
-/* Set from the frame's first orthographic draw on the screen (the HUD
- * begins) to its Swap: a perspective draw then is a 3D piece of the HUD --
- * the target display's ship, posed by its world matrix to sit in its
- * frame -- and goes where the HUD around it goes. */
-static bool hud_phase;
+/* The HUD's 2D pieces drawn this frame (orthographic, smaller than the
+ * screen): their bounds in the game's pixels and where they were squeezed
+ * toward. A perspective draw whose origin lands inside one -- the target
+ * display's ship, posed by its world matrix to sit in its ring -- is a 3D
+ * piece of the HUD and goes where that piece went. Cleared at Swap. */
+#define MAX_HUD_BOXES 64
+static struct { float b[4], anchor; } hud_boxes[MAX_HUD_BOXES];
+static int nhud_boxes;
 
 static uint32_t take(uint32_t *v)
 {
@@ -393,7 +396,7 @@ void sub_0022ADF0(void)
     uint64_t n;
 
     jsf_guest_tib_watch();
-    hud_phase = false;
+    nhud_boxes = 0;
     jsf_widescreen_frame();     /* the aspect setting changed between 16:9 and 21:9 */
     hud_bars_before = hud_bars_frame;
     hud_bars_frame = false;
@@ -1356,17 +1359,15 @@ static const float *projection(void)
     float k, a;
 
     view_widen(&k, &a);
-    if (k != 1.0f && hud_phase && st.mat[TS_PROJECTION][11] != 0.0f) {
-        float px[2], b[4];
-        int rtw, rth;
-        if (origin_pixel(px)) {
-            target_size(&rtw, &rth);
-            b[0] = px[0] - 4.0f; b[2] = px[0] + 4.0f;
-            b[1] = px[1] - 4.0f; b[3] = px[1] + 4.0f;
-            /* narrowed about its own origin's place in the squeezed HUD:
-             * a point at pixel x goes where hud_anchor's squeeze takes it */
-            a = hud_anchor(b, rtw, rth);
-        }
+    if (k != 1.0f && nhud_boxes && !cur_rt.data && st.mat[TS_PROJECTION][11] != 0.0f) {
+        float px[2];
+        if (origin_pixel(px))
+            for (int i = nhud_boxes - 1; i >= 0; i--)
+                if (px[0] >= hud_boxes[i].b[0] && px[0] <= hud_boxes[i].b[2] &&
+                    px[1] >= hud_boxes[i].b[1] && px[1] <= hud_boxes[i].b[3]) {
+                    a = hud_boxes[i].anchor;     /* narrowed toward where its frame went */
+                    break;
+                }
     }
     if (k == 1.0f || st.mat[TS_PROJECTION][11] == 0.0f)
         return st.mat[TS_PROJECTION];
@@ -2700,6 +2701,11 @@ static void hud_squeeze(uint32_t base, uint32_t stride, uint32_t first, uint32_t
         }
         return;                 /* as wide as the screen */
     }
+    /* A menu screen (a full-screen backdrop for a while: hud_menu) keeps
+     * its orthographic pieces as it lays them out, stretched with the
+     * picture: squeezed one by one, the menus' Flash layers came apart. */
+    if (hud_menu() && (st.vshader & 0x00E) != 0x004)
+        return;
     *k = jsf_widescreen_k();
     *anchor = hud_anchor(b, rtw, rth);
 }
@@ -2783,13 +2789,17 @@ static void submit_draw(uint32_t type, uint32_t base, uint32_t stride, uint32_t 
     float hud_k, hud_at;                    /* a HUD sprite's squeeze, on a wider screen, and about where */
 
     state_init();
-    if (!hud_phase && !(st.vshader & 1) && (st.vshader & 0x00E) != 0x004 && hud_ortho()) {
-        /* a HUD piece, not a full-width backdrop drawn before the scene */
+    if (nhud_boxes < MAX_HUD_BOXES && !(st.vshader & 1) && (st.vshader & 0x00E) != 0x004 && hud_ortho()) {
+        /* a HUD piece (not a full-width backdrop), for 3D drawn inside it */
         float b[4];
         int rtw, rth;
         target_size(&rtw, &rth);
-        if (hud_sprite(base, stride, first, count, b) && (b[0] > 0.5f || b[2] < (float)rtw - 1.5f))
-            hud_phase = true;
+        if (hud_sprite(base, stride, first, count, b) && (b[0] > 0.5f || b[2] < (float)rtw - 1.5f) &&
+            b[2] - b[0] >= 16.0f && b[3] - b[1] >= 16.0f) {
+            memcpy(hud_boxes[nhud_boxes].b, b, sizeof b);
+            hud_boxes[nhud_boxes].anchor = hud_anchor(b, rtw, rth);
+            nhud_boxes++;
+        }
     }
     if (cutscene_bars(base, stride, first, count))
         return;
