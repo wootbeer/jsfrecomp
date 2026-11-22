@@ -410,6 +410,9 @@ void sub_0022ADF0(void)
     hud_backdrop_run = hud_backdrop_frame ? hud_backdrop_run + 1 : 0;
     hud_backdrop_frame = false;
     hud_menu_log();
+    /* A static menu (a menu's backdrop, and under 30 3D draws: not the
+     * title over the attract demo) is drawn and shown at 4:3. */
+    jsf_widescreen_set_menu(hud_menu() && scene_draws_last < 30);
     if (swap_interval > 0) {
         while (current_vblank() < last_vblank + (Uint64)swap_interval)
             wait_vblank_for(true);
@@ -2600,7 +2603,9 @@ static bool hud_sprite(uint32_t base, uint32_t stride, uint32_t first, uint32_t 
     float wvp[16];
     int rtw = 640, rth = 480;
 
-    if (!count || count > 4096 || !jsf_widescreen_active() || (st.vshader & 1))
+    /* by the setting, not jsf_widescreen_active: menu screens are found
+     * here (hud_squeeze) also while one is shown at 4:3 */
+    if (!count || count > 4096 || jsf_settings_get()->aspect == JSF_ASPECT_4_3 || (st.vshader & 1))
         return false;
     pre = (st.vshader & 0x00E) == 0x004;
     if (!pre) {
@@ -2706,21 +2711,10 @@ static void hud_squeeze(uint32_t base, uint32_t stride, uint32_t first, uint32_t
             snprintf(hud_menu_why, sizeof hud_menu_why, "a full-screen sprite, %u vertices, texture %08x, color %08x",
                      count, st.tex[0] ? MEM32(st.tex[0] + 4) : 0u, c);
         }
-        /* A menu screen keeps its 4:3 shape in the middle (below), unless
-         * a 3D scene fills the screen behind it; otherwise as wide as the
-         * screen */
-        if (!hud_menu() || scene_draws_last >= 30)
-            return;
+        return;                 /* as wide as the screen */
     }
-    /* A menu screen (a full-screen backdrop for a while: hud_menu): every
-     * piece, the full-width ones too, squeezed toward the middle alike, as
-     * its 3D is (view_widen), so the menu is shown whole at its own shape.
-     * The Flash menus draw hundreds of pieces; with the full-width ones
-     * stretched and the rest squeezed, they came apart. */
-    if (hud_menu()) {
-        *k = jsf_widescreen_k();
-        return;
-    }
+    if (!jsf_widescreen_active())
+        return;                 /* a static menu, shown at 4:3 */
     *k = jsf_widescreen_k();
     *anchor = hud_anchor(b, rtw, rth);
 }

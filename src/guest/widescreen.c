@@ -28,13 +28,26 @@
 
 #include <math.h>
 
+/* A static menu screen (d3d_hle.c: a menu's backdrop and little 3D)
+ * is drawn and shown as the 4:3 the game made it: the Flash menus fill
+ * their shapes with bitmaps whose coordinates come from the positions,
+ * so a squeezed shape cut its picture off instead of narrowing it. */
+static bool menu_43;
+
+void jsf_widescreen_set_menu(bool on)
+{
+    menu_43 = on;
+}
+
 bool jsf_widescreen_active(void)
 {
-    return jsf_settings_get()->aspect != JSF_ASPECT_4_3;
+    return jsf_settings_get()->aspect != JSF_ASPECT_4_3 && !menu_43;
 }
 
 float jsf_widescreen_ratio(void)
 {
+    if (menu_43)
+        return 4.0f / 3.0f;
     switch (jsf_settings_get()->aspect) {
     case JSF_ASPECT_16_9: return 16.0f / 9.0f;
     case JSF_ASPECT_21_9: return 64.0f / 27.0f;
