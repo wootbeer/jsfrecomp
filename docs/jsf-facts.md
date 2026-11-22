@@ -232,3 +232,9 @@ code 0x001FEB80 and 0x001FEC60.
   near +0x88, far +0x8C, an off-center perspective through D3DX, then
   SetTransform). Widescreen lends the frustum builder a wider field of
   view (`widescreen.c`); the projection and 0x000271ED stay 4:3.
+- The in-flight HUD is not pretransformed: it is fixed-function 3D
+  through an orthographic projection onto the screen's pixels (wvp 2/640,
+  -2/480, -1, 1; the world translation is the pixel position). It was
+  only stretched by widescreen (oval rings). The target display's ship is
+  a perspective draw with a centered projection, posed by its world
+  matrix to sit in its ring, drawn after the HUD's 2D.

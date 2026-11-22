@@ -65,6 +65,12 @@ static void note_backbuffers(void);
  * runs it one thread at a time: plain counters. */
 static uint32_t draws_called, draws_drawn, draws_dropped;
 
+/* Set from the frame's first orthographic draw on the screen (the HUD
+ * begins) to its Swap: a perspective draw then is a 3D piece of the HUD --
+ * the target display's ship, posed by its world matrix to sit in its
+ * frame -- and goes where the HUD around it goes. */
+static bool hud_phase;
+
 static uint32_t take(uint32_t *v)
 {
     uint32_t t = *v;
@@ -387,6 +393,7 @@ void sub_0022ADF0(void)
     uint64_t n;
 
     jsf_guest_tib_watch();
+    hud_phase = false;
     jsf_widescreen_frame();     /* the aspect setting changed between 16:9 and 21:9 */
     hud_bars_before = hud_bars_frame;
     hud_bars_frame = false;
@@ -1250,6 +1257,17 @@ void sub_00226830(void)
 static bool hud_menu(void);
 static float hud_anchor(const float b[4], int rtw, int rth);
 static void target_size(int *w, int *h);
+static void mat_mul(const float *a, const float *b, float *out);
+
+/* A fixed-function draw through an orthographic projection (no w from z)
+ * onto the screen: the HUD's way. */
+static bool hud_ortho(void)
+{
+    const float *m = st.mat[TS_PROJECTION];
+    return !cur_rt.data && m[11] == 0.0f && m[15] != 0.0f && !(st.vshader & 1);
+}
+
+
 
 /* Widescreen: a 3D draw into a viewport smaller than the screen it draws
  * on (the target display's ship, inside its round HUD frame) is part of
@@ -1275,6 +1293,25 @@ static bool hud_viewport(float vp[4])
     vp[1] = b[1];
     vp[2] = (float)st.vp_w * k;
     vp[3] = (float)st.vp_h;
+    return true;
+}
+
+/* Where a fixed-function draw's object origin lands on the screen, in the
+ * game's pixels, through the raw projection; false behind the camera. */
+static bool origin_pixel(float px[2])
+{
+    float wv[16], c[4];
+    const float *p = st.mat[TS_PROJECTION];
+    int rtw, rth;
+
+    mat_mul(st.mat[TS_WORLD], st.mat[TS_VIEW], wv);
+    for (int k = 0; k < 4; k++)
+        c[k] = wv[12] * p[k] + wv[13] * p[4 + k] + wv[14] * p[8 + k] + wv[15] * p[12 + k];
+    if (c[3] <= 0.0f)
+        return false;
+    target_size(&rtw, &rth);
+    px[0] = (c[0] / c[3] + 1.0f) * 0.5f * (float)rtw;
+    px[1] = (1.0f - c[1] / c[3]) * 0.5f * (float)rth;
     return true;
 }
 
@@ -1319,6 +1356,18 @@ static const float *projection(void)
     float k, a;
 
     view_widen(&k, &a);
+    if (k != 1.0f && hud_phase && st.mat[TS_PROJECTION][11] != 0.0f) {
+        float px[2], b[4];
+        int rtw, rth;
+        if (origin_pixel(px)) {
+            target_size(&rtw, &rth);
+            b[0] = px[0] - 4.0f; b[2] = px[0] + 4.0f;
+            b[1] = px[1] - 4.0f; b[3] = px[1] + 4.0f;
+            /* narrowed about its own origin's place in the squeezed HUD:
+             * a point at pixel x goes where hud_anchor's squeeze takes it */
+            a = hud_anchor(b, rtw, rth);
+        }
+    }
     if (k == 1.0f || st.mat[TS_PROJECTION][11] == 0.0f)
         return st.mat[TS_PROJECTION];
     memcpy(m, st.mat[TS_PROJECTION], sizeof m);
@@ -2534,20 +2583,43 @@ static bool timed_fvf(uint32_t fvf, uint32_t base, uint32_t stride, uint32_t fir
 
 /* Widescreen (src/guest/widescreen.c): whether this draw is in screen
  * space -- the HUD, menus, text, and the game's own 2D -- and if so the
- * bounds of its vertices, in the game's pixels. Jedi Starfighter draws
- * them all pretransformed (FVF XYZRHW). */
+ * bounds of its vertices, in the game's pixels. Jedi Starfighter draws its
+ * menus pretransformed (FVF XYZRHW) and its HUD in 3D through an
+ * orthographic projection onto the screen's pixels (hud_ortho). */
 static bool hud_sprite(uint32_t base, uint32_t stride, uint32_t first, uint32_t count, float box[4])
 {
-    if (!count || !jsf_widescreen_active())
+    bool pre;
+    float wvp[16];
+    int rtw = 640, rth = 480;
+
+    if (!count || count > 4096 || !jsf_widescreen_active() || (st.vshader & 1))
         return false;
-    if ((st.vshader & 1) || (st.vshader & 0x00E) != 0x004)
-        return false;
+    pre = (st.vshader & 0x00E) == 0x004;
+    if (!pre) {
+        float wv[16];
+        if (!hud_ortho())
+            return false;
+        mat_mul(st.mat[TS_WORLD], st.mat[TS_VIEW], wv);
+        mat_mul(wv, st.mat[TS_PROJECTION], wvp);
+        target_size(&rtw, &rth);
+    }
     box[0] = box[1] = 1e9f;
     box[2] = box[3] = -1e9f;
     for (uint32_t i = 0; i < count; i++) {
-        uint32_t w[2] = { MEM32(base + (first + i) * stride), MEM32(base + (first + i) * stride + 4) };
+        uint32_t v = base + (first + i) * stride;
         float p[2];
-        memcpy(p, w, sizeof p);
+        if (pre) {
+            p[0] = f32(v);
+            p[1] = f32(v + 4);
+        } else {
+            float x = f32(v), y = f32(v + 4), z = f32(v + 8), c[4];
+            for (int k = 0; k < 4; k++)
+                c[k] = x * wvp[k] + y * wvp[4 + k] + z * wvp[8 + k] + wvp[12 + k];
+            if (c[3] == 0.0f)
+                return false;
+            p[0] = (c[0] / c[3] + 1.0f) * 0.5f * (float)rtw;
+            p[1] = (1.0f - c[1] / c[3]) * 0.5f * (float)rth;
+        }
         box[0] = SDL_min(box[0], p[0]);
         box[1] = SDL_min(box[1], p[1]);
         box[2] = SDL_max(box[2], p[0]);
@@ -2576,11 +2648,12 @@ static bool hud_sprite(uint32_t base, uint32_t stride, uint32_t first, uint32_t 
  * to that side, unless a menu is up; so does a marker against a side. */
 static float hud_anchor(const float b[4], int rtw, int rth)
 {
-    float w3 = (float)rtw / 3.0f, margin = 0.06f * (float)rtw;
+    float w3 = (float)rtw / 3.0f, margin = 0.12f * (float)rtw;
+    float cy = 0.5f * (b[1] + b[3]);
 
-    /* A small piece against the side of the 4:3 screen -- the markers that
+    /* A small piece near the side of the 4:3 screen -- the markers that
      * point at targets off the screen -- stays against that side of the
-     * wide one, HUD centered or not; in the top or bottom third only with
+     * wide one, HUD centered or not; in the top or bottom part only with
      * HUD Edges, where the centered HUD keeps its corner panels. */
     if (!hud_menu() && b[2] - b[0] < (float)rtw / 5.0f &&
         (jsf_settings_get()->hud_edges || (b[1] > (float)rth / 4.0f && b[3] < 3.0f * (float)rth / 4.0f))) {
@@ -2589,8 +2662,12 @@ static float hud_anchor(const float b[4], int rtw, int rth)
         if (b[2] >= (float)rtw - margin)
             return 1.0f;
     }
+    /* HUD Edges: a piece centered in the top or bottom part of the screen
+     * (out of the middle sixth, where the crosshair and the brackets are)
+     * and in a side third goes to that side: the corner panels, the target
+     * display and its label. */
     if (!jsf_settings_get()->hud_edges || hud_menu() ||
-        !(b[3] <= (float)rth / 3.0f || b[1] >= 2.0f * (float)rth / 3.0f))
+        !(cy <= 0.42f * (float)rth || cy >= 0.58f * (float)rth))
         return 0.0f;
     if (b[0] < w3 && b[2] <= 2.0f * w3)
         return -1.0f;
@@ -2610,7 +2687,9 @@ static void hud_squeeze(uint32_t base, uint32_t stride, uint32_t first, uint32_t
         return;
     target_size(&rtw, &rth);
     if (b[0] <= 0.5f && b[2] >= (float)rtw - 1.5f) {
-        uint32_t c = (st.vshader & 0x040) ? MEM32(base + first * stride + 16) : 0xFFFFFFFFu;
+        fvf_layout lo;
+        uint32_t c = (st.vshader & 0x040) && layout_fvf(st.vshader, &lo) ? MEM32(base + first * stride + lo.diffuse_off)
+                                                                       : 0xFFFFFFFFu;
         bool dark = (c & 0xFF) < 0x40 && ((c >> 8) & 0xFF) < 0x40 && ((c >> 16) & 0xFF) < 0x40;
         /* A backdrop (hud_backdrop_run) is textured or dark: an
          * untextured light one is a flash in play. */
@@ -2704,6 +2783,14 @@ static void submit_draw(uint32_t type, uint32_t base, uint32_t stride, uint32_t 
     float hud_k, hud_at;                    /* a HUD sprite's squeeze, on a wider screen, and about where */
 
     state_init();
+    if (!hud_phase && !(st.vshader & 1) && (st.vshader & 0x00E) != 0x004 && hud_ortho()) {
+        /* a HUD piece, not a full-width backdrop drawn before the scene */
+        float b[4];
+        int rtw, rth;
+        target_size(&rtw, &rth);
+        if (hud_sprite(base, stride, first, count, b) && (b[0] > 0.5f || b[2] < (float)rtw - 1.5f))
+            hud_phase = true;
+    }
     if (cutscene_bars(base, stride, first, count))
         return;
     hud_squeeze(base, stride, first, count, &hud_k, &hud_at);
