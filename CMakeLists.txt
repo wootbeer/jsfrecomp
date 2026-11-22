@@ -203,6 +203,7 @@ if(EXISTS "${JSF_GEN_DIR}/recomp_dispatch.c")
     add_library(jsf_recomp OBJECT ${JSF_GEN_SOURCES} ${JSF_HLE_SOURCES}
         src/guest/guest_manual.c
         src/guest/video_hooks.c
+        src/guest/crt_check.c
         src/guest/widescreen.c)
     jsf_force_include(jsf_recomp "${CMAKE_CURRENT_SOURCE_DIR}/src/guest/jsf_names.h")
     # The host's own code, the same whichever program runs.

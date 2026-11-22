@@ -161,6 +161,10 @@ void jsf_guest_run(uint32_t entry)
         SDL_Log("guest: entry point 0x%08x has no recompiled function", entry);
         return;
     }
+    {
+        extern void jsf_crt_selftest(void);
+        jsf_crt_selftest();
+    }
     SDL_Log("guest: entering title at 0x%08x", entry);
     fn();
     SDL_Log("guest: title returned");

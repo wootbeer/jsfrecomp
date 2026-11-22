@@ -249,3 +249,9 @@ code 0x001FEB80 and 0x001FEC60.
   menus' Flash easing calls exp. While exp's entry points were missing
   (before the seeds) it returned its argument and the menus looked right.
   Patch 0052.
+- Checked since: the recompiled exp (with patch 0052) matches the host's
+  to rounding (JSF_CRT_SELFTEST=1: ten arguments, 0 to 88). The menus
+  stayed zoomed at 4:3 too, so neither widescreen nor exp. The last
+  suspect from that batch of seeds is the thunk 0x00184657 (jmp
+  0x000351E9: calls 0x000437CF, then 0x000D4397(this->[0], 1)):
+  JSF_SKIP_184657=1 skips it as before.
