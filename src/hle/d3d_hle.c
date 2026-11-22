@@ -357,7 +357,7 @@ static void peek_guest(void)
  * (cutscene_bars; the frame before as some sprites come before them).
  * A menu: a backdrop -- a sprite of the HUD routine over the whole screen,
  * textured or dark (the pause menu's dimming, the results screen's map) --
- * in each of the last 20 frames. A flash in play is one too, briefly:
+ * in each of the last 4 frames (Jedi Starfighter; Orta took 20). A flash in play is one too, briefly:
  * episode 1's lightning covers the screen for 11 to 14 frames every few
  * seconds, at times nearly black, with the HUD on it. So a menu's cursor
  * is at the side for a third of a second as the menu opens. Swap counts
@@ -368,7 +368,7 @@ static char hud_menu_why[96];       /* the last backdrop or the bars, for the lo
 
 static bool hud_menu(void)
 {
-    return hud_bars_frame || hud_bars_before || hud_backdrop_run >= 20;
+    return hud_bars_frame || hud_bars_before || hud_backdrop_run >= 4;
 }
 
 /* The log says when Edges stops and starts moving the HUD (at most 40
@@ -2699,13 +2699,20 @@ static void hud_squeeze(uint32_t base, uint32_t stride, uint32_t first, uint32_t
             snprintf(hud_menu_why, sizeof hud_menu_why, "a full-screen sprite, %u vertices, texture %08x, color %08x",
                      count, st.tex[0] ? MEM32(st.tex[0] + 4) : 0u, c);
         }
-        return;                 /* as wide as the screen */
+        /* A menu screen keeps its 4:3 shape in the middle (below);
+         * otherwise as wide as the screen */
+        if (!hud_menu())
+            return;
     }
-    /* A menu screen (a full-screen backdrop for a while: hud_menu) keeps
-     * its orthographic pieces as it lays them out, stretched with the
-     * picture: squeezed one by one, the menus' Flash layers came apart. */
-    if (hud_menu() && (st.vshader & 0x00E) != 0x004)
+    /* A menu screen (a full-screen backdrop for a while: hud_menu): every
+     * piece, the full-width ones too, squeezed toward the middle alike, as
+     * its 3D is (view_widen), so the menu is shown whole at its own shape.
+     * The Flash menus draw hundreds of pieces; with the full-width ones
+     * stretched and the rest squeezed, they came apart. */
+    if (hud_menu()) {
+        *k = jsf_widescreen_k();
         return;
+    }
     *k = jsf_widescreen_k();
     *anchor = hud_anchor(b, rtw, rth);
 }
