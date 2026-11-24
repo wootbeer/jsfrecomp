@@ -77,6 +77,10 @@ static uint32_t scene_draws, scene_draws_last;
 /* Screen-space draws on the screen (pretransformed or orthographic: the
  * Flash menus' pieces, the briefing, the HUD), this frame and the last. */
 static uint32_t flat_draws, flat_draws_last;
+/* The part of the screen those cover, visible ones only (summed boxes,
+ * as a fraction of the screen): the briefing's panel most of it, the
+ * flight HUD a fifth or so. */
+static float flat_area, flat_area_last;
 
 #define MAX_HUD_BOXES 64
 static struct { float b[4], anchor; } hud_boxes[MAX_HUD_BOXES];
@@ -409,6 +413,8 @@ void sub_0022ADF0(void)
     scene_draws = 0;
     flat_draws_last = flat_draws;
     flat_draws = 0;
+    flat_area_last = flat_area;
+    flat_area = 0.0f;
     jsf_widescreen_frame();     /* the aspect setting changed between 16:9 and 21:9 */
     hud_bars_before = hud_bars_frame;
     hud_bars_frame = false;
@@ -427,7 +433,10 @@ void sub_0022ADF0(void)
          * level's camera is built while the briefing is up. */
         static int streak;
         unsigned views = jsf_widescreen_take_frustums();
-        bool now = jsf_settings_get()->aspect != JSF_ASPECT_4_3 && flat_draws_last >= 4 && scene_draws_last <= 2;
+        /* ... or 2D over half the screen or more, 3D behind it or not (the
+         * briefing between training missions, over the level) */
+        bool now = jsf_settings_get()->aspect != JSF_ASPECT_4_3 && flat_draws_last >= 4 &&
+                   (scene_draws_last <= 2 || flat_area_last >= 0.5f);
         bool menu = was;
         streak = now == was ? 0 : streak + 1;
         if (streak >= 4) {
@@ -438,9 +447,10 @@ void sub_0022ADF0(void)
             menu = false;
         jsf_widescreen_set_menu(menu);
         if (menu != was && logged++ < 40)
-            SDL_Log("widescreen: %s at frame %llu (the frame before: %u depth-tested 3D draws, %u flat ones, "
-                    "%u views)", menu ? "a static menu, shown at 4:3" : "widescreen again",
-                    (unsigned long long)jsf_gfx_frame_count(), scene_draws_last, flat_draws_last, views);
+            SDL_Log("widescreen: %s at frame %llu (the frame before: %u depth-tested 3D draws, %u flat ones "
+                    "covering %.0f%% of the screen, %u views)", menu ? "a static menu, shown at 4:3" : "widescreen again",
+                    (unsigned long long)jsf_gfx_frame_count(), scene_draws_last, flat_draws_last,
+                    100.0f * flat_area_last, views);
         was = menu;
     }
     if (swap_interval > 0) {
@@ -2627,14 +2637,13 @@ static bool timed_fvf(uint32_t fvf, uint32_t base, uint32_t stride, uint32_t fir
  * bounds of its vertices, in the game's pixels. Jedi Starfighter draws its
  * menus pretransformed (FVF XYZRHW) and its HUD in 3D through an
  * orthographic projection onto the screen's pixels (hud_ortho). */
-static bool hud_sprite(uint32_t base, uint32_t stride, uint32_t first, uint32_t count, float box[4])
+static bool screen_box(uint32_t base, uint32_t stride, uint32_t first, uint32_t count, float box[4])
 {
     bool pre;
     float wvp[16];
     int rtw = 640, rth = 480;
 
-    /* nothing at 4:3, nor on a menu screen shown at 4:3: drawn as the game makes it */
-    if (!count || count > 4096 || !jsf_widescreen_active() || (st.vshader & 1))
+    if (!count || count > 4096 || (st.vshader & 1))
         return false;
     pre = (st.vshader & 0x00E) == 0x004;
     if (!pre) {
@@ -2668,6 +2677,14 @@ static bool hud_sprite(uint32_t base, uint32_t stride, uint32_t first, uint32_t 
         box[3] = SDL_max(box[3], p[1]);
     }
     return true;
+}
+
+static bool hud_sprite(uint32_t base, uint32_t stride, uint32_t first, uint32_t count, float box[4])
+{
+    /* nothing at 4:3, nor on a menu screen shown at 4:3: drawn as the game makes it */
+    if (!jsf_widescreen_active())
+        return false;
+    return screen_box(base, stride, first, count, box);
 }
 
 /* The HUD on a screen wider than 16:9. The game lays its HUD out for 16:9,
@@ -2837,8 +2854,25 @@ static void submit_draw(uint32_t type, uint32_t base, uint32_t stride, uint32_t 
     /* screen-space pieces: pretransformed or orthographic, depth test or
      * not (the briefing draws its with it on) */
     if (!cur_rt.data && !(st.vshader & 1) &&
-        ((st.vshader & 0x00E) == 0x004 || st.mat[TS_PROJECTION][11] == 0.0f))
+        ((st.vshader & 0x00E) == 0x004 || st.mat[TS_PROJECTION][11] == 0.0f)) {
+        float b[4];
+        fvf_layout lo;
+        int rtw, rth;
+        bool clear = false;
         flat_draws++;
+        /* nearly transparent (a fade at rest): not covering anything */
+        if ((st.vshader & 0x040) && layout_fvf(st.vshader, &lo))
+            clear = (MEM32(base + first * stride + lo.diffuse_off) >> 24) < 0x20;
+        target_size(&rtw, &rth);
+        /* panels: a few quads (the star field's hundreds of points span the
+         * screen and cover none of it) */
+        if (!clear && count <= 32 && screen_box(base, stride, first, count, b)) {
+            float w = SDL_min(b[2], (float)rtw) - SDL_max(b[0], 0.0f);
+            float h = SDL_min(b[3], (float)rth) - SDL_max(b[1], 0.0f);
+            if (w > 0.0f && h > 0.0f)
+                flat_area += w * h / ((float)rtw * (float)rth);
+        }
+    }
     if (nhud_boxes < MAX_HUD_BOXES && !(st.vshader & 1) && (st.vshader & 0x00E) != 0x004 && hud_ortho()) {
         /* a HUD piece (not a full-width backdrop), for 3D drawn inside it */
         float b[4];
