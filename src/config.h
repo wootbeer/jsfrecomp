@@ -88,6 +88,8 @@ float jsf_widescreen_ratio(void);
 float jsf_widescreen_k(void);
 /* d3d_hle.c, at each Swap: the next frame is a static menu, shown at 4:3. */
 void jsf_widescreen_set_menu(bool on);
+/* View frustums the game built since the last call (Swap): 0, no 3D view. */
+unsigned jsf_widescreen_take_frustums(void);
 /* The aspect setting asks for 4:3 in a widescreen game or the other way:
  * that takes a restart (16:9 and 21:9 switch at the next frame). */
 bool jsf_widescreen_needs_restart(void);

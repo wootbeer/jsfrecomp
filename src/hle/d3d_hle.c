@@ -420,13 +420,17 @@ void sub_0022ADF0(void)
     {
         static bool was;
         static int logged;
-        /* many flat draws and next to no 3D: a menu screen of its own */
-        bool menu = jsf_settings_get()->aspect != JSF_ASPECT_4_3 && flat_draws_last >= 40 && scene_draws_last < 30;
+        /* A menu screen of its own: many flat draws and next to no 3D (the
+         * profile menu), or flat draws and no 3D view at all -- no view
+         * frustum built (a loading screen's briefing) */
+        unsigned views = jsf_widescreen_take_frustums();
+        bool menu = jsf_settings_get()->aspect != JSF_ASPECT_4_3 &&
+                    ((flat_draws_last >= 40 && scene_draws_last < 30) || (flat_draws_last >= 4 && views == 0));
         jsf_widescreen_set_menu(menu);
         if (menu != was && logged++ < 40)
-            SDL_Log("widescreen: %s at frame %llu (the frame before: %u depth-tested 3D draws, %u flat ones)",
-                    menu ? "a static menu, shown at 4:3" : "widescreen again", (unsigned long long)jsf_gfx_frame_count(),
-                    scene_draws_last, flat_draws_last);
+            SDL_Log("widescreen: %s at frame %llu (the frame before: %u depth-tested 3D draws, %u flat ones, "
+                    "%u views)", menu ? "a static menu, shown at 4:3" : "widescreen again",
+                    (unsigned long long)jsf_gfx_frame_count(), scene_draws_last, flat_draws_last, views);
         was = menu;
     }
     if (swap_interval > 0) {

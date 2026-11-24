@@ -73,12 +73,24 @@ void jsf_widescreen_frame(void) {}
  * view as much wider as the screen is, with the height over width
  * narrowed to match so the vertical view is the same, and given back
  * after: the culling then covers what the wide picture shows. */
+/* View frustums built since the last Swap: the game renders a 3D view
+ * (none on a loading screen or a menu of its own). */
+static unsigned frustums;
+
+unsigned jsf_widescreen_take_frustums(void)
+{
+    unsigned n = frustums;
+    frustums = 0;
+    return n;
+}
+
 extern void sub_000169BF_gen(void);
 void sub_000169BF(void)
 {
     uint32_t cam = MEM32(g_esp + 4);
     float k = jsf_widescreen_k(), fov, aspect;
 
+    frustums++;
     if (k >= 1.0f || !cam) {
         sub_000169BF_gen();
         return;
