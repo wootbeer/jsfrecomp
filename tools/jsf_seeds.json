@@ -49,5 +49,7 @@
   {"start": "0x0012BDA7", "observed": true, "note": "indirect call target opening the credits (owner's run): a wrapper around __RTDynamicCast (0x00202EBD) after another function's ret; missed by the sweep (found by its pattern)"},
   {"start": "0x0012BDC5", "observed": false, "note": "a wrapper around __RTDynamicCast (0x00202EBD) after another function's ret; missed by the sweep (found by its pattern)"},
   {"start": "0x0012BDE3", "observed": false, "note": "a wrapper around __RTDynamicCast (0x00202EBD) after another function's ret; missed by the sweep (found by its pattern)"},
-  {"start": "0x0012BE01", "observed": false, "note": "a wrapper around __RTDynamicCast (0x00202EBD) after another function's ret; missed by the sweep (found by its pattern)"}
+  {"start": "0x0012BE01", "observed": false, "note": "a wrapper around __RTDynamicCast (0x00202EBD) after another function's ret; missed by the sweep (found by its pattern)"},
+  {"start": "0x0017E11F", "observed": true, "note": "virtual function, slot 3 of a vtable (0x002B60E8), called during the credits (owner's run); after a run of this-adjusting jmp thunks, missed by the sweep"},
+  {"start": "0x00130CC4", "observed": false, "note": "virtual function in a vtable of 29 (0x002ABBBC); after another function's jmp, missed by the sweep (found by scanning vtables for unrecompiled entries)"}
 ]

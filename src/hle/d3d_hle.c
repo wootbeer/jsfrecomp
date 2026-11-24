@@ -94,6 +94,14 @@ static bool overlay_screen;
 #define MAX_HUD_BOXES 64
 static struct { float b[4], anchor; } hud_boxes[MAX_HUD_BOXES];
 static int nhud_boxes;
+/* The HUD pieces play put against a side (HUD Edges), from the last frame
+ * that was play: over play (the pause screen, the fade into a level) a
+ * piece with the same bounds keeps its side, so the HUD still up under the
+ * pause panel does not jump to the middle and back. One table is filled
+ * while the other is read. */
+#define MAX_PLAY_PIECES 128
+static struct { float b[4], anchor; } play_pieces[2][MAX_PLAY_PIECES];
+static int nplay_pieces[2], play_fill;
 
 static uint32_t take(uint32_t *v)
 {
@@ -455,7 +463,10 @@ void sub_0022ADF0(void)
         /* over play: in at half the screen covered, out below a third
          * (play's HUD covers about a fifth, the pause screen all of it),
          * so both ways switch at once and still never flicker */
-        int now = jsf_settings_get()->aspect == JSF_ASPECT_4_3 || flat_draws_last < 4 ? 0
+        /* over play, a frame of few flat draws still covering a third
+         * stays over play (the credits draw 3 and 18 in turn) */
+        int now = jsf_settings_get()->aspect == JSF_ASPECT_4_3 ||
+                  (flat_draws_last < 4 && !(state == 1 && flat_area_last >= 0.33f)) ? 0
                 : scene_draws_last == 0 ? 2
                 : flat_area_last >= (state == 1 ? 0.33f : 0.5f) ? 1 : 0;
         /* at once both ways: a delay drew the pause panel's first frames,
@@ -471,6 +482,12 @@ void sub_0022ADF0(void)
             state = now;
             streak = 0;
         }
+        /* this frame drawn as play and play by its own draws: its pieces
+         * are the ones to keep (the pause panel's first frame is drawn as
+         * play, and is not) */
+        if (!overlay_screen && now == 0 && jsf_widescreen_active())
+            play_fill ^= 1;
+        nplay_pieces[play_fill] = 0;
         jsf_widescreen_set_menu(state == 2);
         overlay_screen = state == 1;
         was = state == 2;
@@ -2757,6 +2774,31 @@ static float hud_anchor(const float b[4], int rtw, int rth)
     return 0.0f;
 }
 
+/* Where a piece goes, by the frame's rules: play's sides (hud_anchor) in
+ * play, recorded for the screens over play; over play, the middle, unless
+ * the piece is one play last put against a side. */
+static float piece_anchor(const float b[4], int rtw, int rth, bool record)
+{
+    float a;
+
+    if (overlay_screen) {
+        int r = play_fill ^ 1;
+        for (int i = 0; i < nplay_pieces[r]; i++) {
+            const float *p = play_pieces[r][i].b;
+            if (SDL_fabsf(p[0] - b[0]) <= 2.0f && SDL_fabsf(p[1] - b[1]) <= 2.0f &&
+                SDL_fabsf(p[2] - b[2]) <= 2.0f && SDL_fabsf(p[3] - b[3]) <= 2.0f)
+                return play_pieces[r][i].anchor;
+        }
+        return 0.0f;
+    }
+    a = hud_anchor(b, rtw, rth);
+    if (record && a != 0.0f && nplay_pieces[play_fill] < MAX_PLAY_PIECES) {
+        memcpy(play_pieces[play_fill][nplay_pieces[play_fill]].b, b, 4 * sizeof *b);
+        play_pieces[play_fill][nplay_pieces[play_fill]++].anchor = a;
+    }
+    return a;
+}
+
 static void hud_squeeze(uint32_t base, uint32_t stride, uint32_t first, uint32_t count, float *k, float *anchor)
 {
     float b[4];
@@ -2792,9 +2834,8 @@ static void hud_squeeze(uint32_t base, uint32_t stride, uint32_t first, uint32_t
     if (!jsf_widescreen_active())
         return;                 /* a static menu, shown at 4:3 */
     *k = jsf_widescreen_k();
-    if (overlay_screen)
-        return;                 /* a screen over play: about the middle, all alike */
-    *anchor = hud_anchor(b, rtw, rth);
+    /* over play: about the middle, all alike, but play's HUD where play had it */
+    *anchor = piece_anchor(b, rtw, rth, true);
 }
 
 /* What became of a draw that looked like the cutscene bars, for the log:
@@ -2919,7 +2960,7 @@ static void submit_draw(uint32_t type, uint32_t base, uint32_t stride, uint32_t 
         if (hud_sprite(base, stride, first, count, b) && (b[0] > 0.5f || b[2] < (float)rtw - 1.5f) &&
             b[2] - b[0] >= 16.0f && b[3] - b[1] >= 16.0f) {
             memcpy(hud_boxes[nhud_boxes].b, b, sizeof b);
-            hud_boxes[nhud_boxes].anchor = hud_anchor(b, rtw, rth);
+            hud_boxes[nhud_boxes].anchor = piece_anchor(b, rtw, rth, false);
             nhud_boxes++;
         }
     }
