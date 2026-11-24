@@ -81,6 +81,11 @@ static uint32_t flat_draws, flat_draws_last;
  * as a fraction of the screen): the briefing's panel most of it, the
  * flight HUD a fifth or so. */
 static float flat_area, flat_area_last;
+/* A screen over play (the pause menu, the briefing between missions:
+ * its 2D over half the screen, the level's 3D behind): the 3D stays wide
+ * and every 2D piece, full-width ones too, is squeezed toward the middle
+ * alike, so the panel keeps its shape and nothing snaps to 4:3. */
+static bool overlay_screen;
 
 #define MAX_HUD_BOXES 64
 static struct { float b[4], anchor; } hud_boxes[MAX_HUD_BOXES];
@@ -425,33 +430,34 @@ void sub_0022ADF0(void)
     {
         static bool was;
         static int logged;
-        /* A screen of its own: screen-space draws and next to no 3D (at
-         * most 2 depth-tested 3D draws: the menus have none, the
-         * briefing one; play has 20 or more even in empty space). It must
-         * hold for 4 frames running to switch either way, so play never
-         * flickers to 4:3. Views (frustums built) are only logged: the
-         * level's camera is built while the briefing is up. */
-        static int streak;
+        /* What the frame is, from the one before: 0 play; 1 a screen over
+         * play -- its 2D panels cover half the screen or more, the level's
+         * 3D behind (the pause menu, the briefing between missions):
+         * overlay_screen; 2 a screen of its own -- screen-space draws and
+         * at most 2 depth-tested 3D draws (the menus none, the loading
+         * screen's briefing one; play has 20 or more): drawn and shown at
+         * 4:3. It must hold for 4 frames running to switch. Views
+         * (frustums built) are only logged. */
+        static int state, streak;
+        static const char *const names[3] = { "widescreen again", "a screen over play, its 2D squeezed",
+                                              "a static menu, shown at 4:3" };
         unsigned views = jsf_widescreen_take_frustums();
-        /* ... or 2D over half the screen or more, 3D behind it or not (the
-         * briefing between training missions, over the level) */
-        bool now = jsf_settings_get()->aspect != JSF_ASPECT_4_3 && flat_draws_last >= 4 &&
-                   (scene_draws_last <= 2 || flat_area_last >= 0.5f);
-        bool menu = was;
-        streak = now == was ? 0 : streak + 1;
-        if (streak >= 4) {
-            menu = now;
+        int now = jsf_settings_get()->aspect == JSF_ASPECT_4_3 || flat_draws_last < 4 ? 0
+                : scene_draws_last <= 2 ? 2
+                : flat_area_last >= 0.5f ? 1 : 0;
+        streak = now == state ? 0 : streak + 1;
+        if (streak >= 4 || jsf_settings_get()->aspect == JSF_ASPECT_4_3) {
+            if (now != state && logged++ < 40)
+                SDL_Log("widescreen: %s at frame %llu (the frame before: %u depth-tested 3D draws, %u flat ones "
+                        "covering %.0f%% of the screen, %u views)", names[now],
+                        (unsigned long long)jsf_gfx_frame_count(), scene_draws_last, flat_draws_last,
+                        100.0f * flat_area_last, views);
+            state = now;
             streak = 0;
         }
-        if (jsf_settings_get()->aspect == JSF_ASPECT_4_3)
-            menu = false;
-        jsf_widescreen_set_menu(menu);
-        if (menu != was && logged++ < 40)
-            SDL_Log("widescreen: %s at frame %llu (the frame before: %u depth-tested 3D draws, %u flat ones "
-                    "covering %.0f%% of the screen, %u views)", menu ? "a static menu, shown at 4:3" : "widescreen again",
-                    (unsigned long long)jsf_gfx_frame_count(), scene_draws_last, flat_draws_last,
-                    100.0f * flat_area_last, views);
-        was = menu;
+        jsf_widescreen_set_menu(state == 2);
+        overlay_screen = state == 1;
+        was = state == 2;
     }
     if (swap_interval > 0) {
         while (current_vblank() < last_vblank + (Uint64)swap_interval)
@@ -2759,11 +2765,19 @@ static void hud_squeeze(uint32_t base, uint32_t stride, uint32_t first, uint32_t
             snprintf(hud_menu_why, sizeof hud_menu_why, "a full-screen sprite, %u vertices, texture %08x, color %08x",
                      count, st.tex[0] ? MEM32(st.tex[0] + 4) : 0u, c);
         }
-        return;                 /* as wide as the screen */
+        /* as wide as the screen; over play, a textured one (panel art)
+         * squeezed with the rest, a plain one (the pause veil, a fade)
+         * left over the whole screen */
+        if (!overlay_screen || !jsf_widescreen_active() || !st.tex[0])
+            return;
+        *k = jsf_widescreen_k();
+        return;
     }
     if (!jsf_widescreen_active())
         return;                 /* a static menu, shown at 4:3 */
     *k = jsf_widescreen_k();
+    if (overlay_screen)
+        return;                 /* a screen over play: about the middle, all alike */
     *anchor = hud_anchor(b, rtw, rth);
 }
 
