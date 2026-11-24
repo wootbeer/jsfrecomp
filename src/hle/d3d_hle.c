@@ -452,14 +452,17 @@ void sub_0022ADF0(void)
         static const char *const names[3] = { "widescreen again", "a screen over play, its 2D squeezed",
                                               "a static menu, shown at 4:3" };
         unsigned views = jsf_widescreen_take_frustums();
+        /* over play: in at half the screen covered, out below a third
+         * (play's HUD covers about a fifth, the pause screen all of it),
+         * so both ways switch at once and still never flicker */
         int now = jsf_settings_get()->aspect == JSF_ASPECT_4_3 || flat_draws_last < 4 ? 0
                 : scene_draws_last == 0 ? 2
-                : flat_area_last >= 0.5f ? 1 : 0;
-        /* into a screen at once (its first frames were drawn by play's
-         * rules, then snapped: the pause menu); back to play after 4
-         * frames running, so play never flickers */
+                : flat_area_last >= (state == 1 ? 0.33f : 0.5f) ? 1 : 0;
+        /* at once both ways: a delay drew the pause panel's first frames,
+         * and play's first frames after it, by the other's rules, then
+         * snapped */
         streak = now == state ? 0 : streak + 1;
-        if (streak >= (now != 0 ? 1 : 4) || jsf_settings_get()->aspect == JSF_ASPECT_4_3) {
+        if (streak >= 1 || jsf_settings_get()->aspect == JSF_ASPECT_4_3) {
             if (now != state && logged++ < 40)
                 SDL_Log("widescreen: %s at frame %llu (the frame before: %u depth-tested 3D draws, %u flat ones "
                         "covering %.0f%% of the screen, %u views)", names[now],
