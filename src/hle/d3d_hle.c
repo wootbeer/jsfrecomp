@@ -102,6 +102,10 @@ static int nhud_boxes;
 #define MAX_PLAY_PIECES 128
 static struct { float b[4], anchor; } play_pieces[2][MAX_PLAY_PIECES];
 static int nplay_pieces[2], play_fill;
+/* the big HUD pieces against a side (side_piece) */
+#define MAX_BIG_PIECES 16
+static struct { float b[4], anchor; } big_pieces[2][MAX_BIG_PIECES];
+static int nbig_pieces[2], big_fill;
 /* The frame's screen-space draws, as drawn: which rules a frame is drawn by
  * is known from the frame before, so a new screen's first frame (the pause
  * panel's, a menu's, play's after either) was drawn by the last one's and
@@ -440,6 +444,8 @@ void sub_0022ADF0(void)
 
     jsf_guest_tib_watch();
     nhud_boxes = 0;
+    big_fill ^= 1;
+    nbig_pieces[big_fill] = 0;
     scene_draws_last = scene_draws;
     scene_draws = 0;
     flat_draws_last = flat_draws;
@@ -1763,8 +1769,11 @@ static void fill_draw_state(jsf_draw *d, bool pretransformed)
                     | (ti.format == 0x2C || ti.format == 0x2D || ti.format >= 0x30 ? 0 : 16)
                     | (jsf_gfx_depth_reversed() ? 32 : 0);      /* stored as 1 - z (renderer.c) */
                 {
-                    static uint32_t logged_func;
-                    if (RS(RS_SHADOWFUNC) != logged_func) {
+                    /* each function once: the game alternates between them */
+                    static uint8_t logged_funcs;
+                    uint32_t logged_func = RS(RS_SHADOWFUNC);
+                    if (logged_func - 0x200u < 8u && !(logged_funcs & (1u << (logged_func - 0x200u)))) {
+                        logged_funcs |= (uint8_t)(1u << (logged_func - 0x200u));
                         logged_func = RS(RS_SHADOWFUNC);
                         SDL_Log("d3d: shadow map at 0x%08x (format 0x%02x) compared with SHADOWFUNC 0x%x",
                                 MEM32(t + 4), ti.format, logged_func);
@@ -2761,6 +2770,39 @@ static bool hud_sprite(uint32_t base, uint32_t stride, uint32_t first, uint32_t 
  * is squeezed toward: -1 the left edge, 1 the right, 0 the middle. With
  * HUD Edges, a piece in the top or bottom third and in a side third goes
  * to that side, unless a menu is up; so does a marker against a side. */
+/* The big HUD pieces put against a side, this frame and the last (the
+ * lock-on brackets are drawn before the panels): a small piece goes to a
+ * side with the side-thirds rule only inside one of them, as the corner
+ * panels' lights and digits are. A target bracket (four corners of 15x16,
+ * each its own draw) straddling the line between the middle and the
+ * bottom part split in two: its lower corners went to the side. */
+
+static float side_piece(const float b[4], float a)
+{
+    float w = b[2] - b[0], h = b[3] - b[1];
+
+    if (w >= 64.0f && h >= 64.0f) {
+        int f = big_fill, i;
+        for (i = 0; i < nbig_pieces[f]; i++)
+            if (!memcmp(big_pieces[f][i].b, b, sizeof big_pieces[f][i].b))
+                break;
+        if (i == nbig_pieces[f] && i < MAX_BIG_PIECES) {
+            memcpy(big_pieces[f][i].b, b, sizeof big_pieces[f][i].b);
+            big_pieces[f][i].anchor = a;
+            nbig_pieces[f]++;
+        }
+        return a;
+    }
+    for (int f = 0; f < 2; f++)
+        for (int i = 0; i < nbig_pieces[f]; i++) {
+            const float *p = big_pieces[f][i].b;
+            if (big_pieces[f][i].anchor == a && b[0] >= p[0] - 8.0f && b[2] <= p[2] + 8.0f &&
+                b[1] >= p[1] - 8.0f && b[3] <= p[3] + 8.0f)
+                return a;
+        }
+    return 0.0f;
+}
+
 static float hud_anchor(const float b[4], int rtw, int rth)
 {
     float w3 = (float)rtw / 3.0f, margin = 0.12f * (float)rtw;
@@ -2785,9 +2827,9 @@ static float hud_anchor(const float b[4], int rtw, int rth)
         !(cy <= 0.42f * (float)rth || cy >= 0.58f * (float)rth))
         return 0.0f;
     if (b[0] < w3 && b[2] <= 2.0f * w3)
-        return -1.0f;
+        return side_piece(b, -1.0f);
     if (b[2] > 2.0f * w3 && b[0] >= w3)
-        return 1.0f;
+        return side_piece(b, 1.0f);
     return 0.0f;
 }
 
