@@ -74,8 +74,8 @@ static uint32_t draws_called, draws_drawn, draws_dropped;
  * frame and the last: a menu with a 3D scene behind it (the title over the
  * attract demo) stays widescreen; one without is shown at 4:3. */
 static uint32_t scene_draws, scene_draws_last;
-/* Draws on the screen with the depth test off (the Flash menus' pieces,
- * the HUD), this frame and the last. */
+/* Screen-space draws on the screen (pretransformed or orthographic: the
+ * Flash menus' pieces, the briefing, the HUD), this frame and the last. */
 static uint32_t flat_draws, flat_draws_last;
 
 #define MAX_HUD_BOXES 64
@@ -420,12 +420,14 @@ void sub_0022ADF0(void)
     {
         static bool was;
         static int logged;
-        /* A menu screen of its own: many flat draws and next to no 3D (the
-         * profile menu), or flat draws and no 3D view at all -- no view
-         * frustum built (a loading screen's briefing) */
+        /* A screen of its own: screen-space draws and no 3D scene drawn --
+         * the menus, the loading screen's briefing (whose camera is built
+         * meanwhile, so views are only logged) -- or many of them and next
+         * to no 3D (the profile menu's sphere) */
         unsigned views = jsf_widescreen_take_frustums();
         bool menu = jsf_settings_get()->aspect != JSF_ASPECT_4_3 &&
-                    ((flat_draws_last >= 40 && scene_draws_last < 30) || (flat_draws_last >= 4 && views == 0));
+                    ((flat_draws_last >= 4 && scene_draws_last == 0) ||
+                     (flat_draws_last >= 40 && scene_draws_last < 30));
         jsf_widescreen_set_menu(menu);
         if (menu != was && logged++ < 40)
             SDL_Log("widescreen: %s at frame %llu (the frame before: %u depth-tested 3D draws, %u flat ones, "
@@ -2722,7 +2724,9 @@ static void hud_squeeze(uint32_t base, uint32_t stride, uint32_t first, uint32_t
         fvf_layout lo;
         uint32_t c = (st.vshader & 0x040) && layout_fvf(st.vshader, &lo) ? MEM32(base + first * stride + lo.diffuse_off)
                                                                        : 0xFFFFFFFFu;
-        bool dark = (c & 0xFF) < 0x40 && ((c >> 8) & 0xFF) < 0x40 && ((c >> 16) & 0xFF) < 0x40;
+        /* dark and visible: in play a full-screen black at alpha 0 (a fade
+         * at rest) is drawn every frame, and took Edges off for good */
+        bool dark = (c & 0xFF) < 0x40 && ((c >> 8) & 0xFF) < 0x40 && ((c >> 16) & 0xFF) < 0x40 && (c >> 24) >= 0x20;
         /* A backdrop (hud_backdrop_run) is textured or dark: an
          * untextured light one is a flash in play. */
         if (b[1] <= 0.5f && b[3] >= (float)rth - 1.5f && !hud_backdrop_frame && (st.tex[0] || dark)) {
@@ -2822,7 +2826,10 @@ static void submit_draw(uint32_t type, uint32_t base, uint32_t stride, uint32_t 
     if (!cur_rt.data && RS(RS_ZENABLE) &&
         ((st.vshader & 1) || ((st.vshader & 0x00E) != 0x004 && st.mat[TS_PROJECTION][11] != 0.0f)))
         scene_draws++;
-    if (!cur_rt.data && !RS(RS_ZENABLE))
+    /* screen-space pieces: pretransformed or orthographic, depth test or
+     * not (the briefing draws its with it on) */
+    if (!cur_rt.data && !(st.vshader & 1) &&
+        ((st.vshader & 0x00E) == 0x004 || st.mat[TS_PROJECTION][11] == 0.0f))
         flat_draws++;
     if (nhud_boxes < MAX_HUD_BOXES && !(st.vshader & 1) && (st.vshader & 0x00E) != 0x004 && hud_ortho()) {
         /* a HUD piece (not a full-width backdrop), for 3D drawn inside it */
