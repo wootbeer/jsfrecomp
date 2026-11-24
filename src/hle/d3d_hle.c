@@ -70,9 +70,9 @@ static uint32_t draws_called, draws_drawn, draws_dropped;
  * toward. A perspective draw whose origin lands inside one -- the target
  * display's ship, posed by its world matrix to sit in its ring -- is a 3D
  * piece of the HUD and goes where that piece went. Cleared at Swap. */
-/* 3D draws on the screen (perspective, not pieces of the HUD) this frame
- * and the last: a menu with a 3D scene behind it (the title over the
- * attract demo) stretches its full-width pieces with the scene. */
+/* 3D draws on the screen (perspective or programs, depth-tested) this
+ * frame and the last: a menu with a 3D scene behind it (the title over the
+ * attract demo) stays widescreen; one without is shown at 4:3. */
 static uint32_t scene_draws, scene_draws_last;
 
 #define MAX_HUD_BOXES 64
@@ -412,7 +412,17 @@ void sub_0022ADF0(void)
     hud_menu_log();
     /* A static menu (a menu's backdrop, and under 30 3D draws: not the
      * title over the attract demo) is drawn and shown at 4:3. */
-    jsf_widescreen_set_menu(hud_menu() && scene_draws_last < 30);
+    {
+        static bool was;
+        static int logged;
+        bool menu = jsf_settings_get()->aspect != JSF_ASPECT_4_3 && hud_menu() && scene_draws_last < 30;
+        jsf_widescreen_set_menu(menu);
+        if (menu != was && logged++ < 40)
+            SDL_Log("widescreen: %s at frame %llu (%u depth-tested 3D draws the frame before)",
+                    menu ? "a static menu, shown at 4:3" : "widescreen again", (unsigned long long)jsf_gfx_frame_count(),
+                    scene_draws_last);
+        was = menu;
+    }
     if (swap_interval > 0) {
         while (current_vblank() < last_vblank + (Uint64)swap_interval)
             wait_vblank_for(true);
@@ -2798,7 +2808,10 @@ static void submit_draw(uint32_t type, uint32_t base, uint32_t stride, uint32_t 
     float hud_k, hud_at;                    /* a HUD sprite's squeeze, on a wider screen, and about where */
 
     state_init();
-    if (!cur_rt.data && ((st.vshader & 1) || ((st.vshader & 0x00E) != 0x004 && st.mat[TS_PROJECTION][11] != 0.0f)))
+    /* A 3D scene draws with the depth test on; the Flash menus' pieces
+     * (perspective or not) with it off, and so do not count. */
+    if (!cur_rt.data && RS(RS_ZENABLE) &&
+        ((st.vshader & 1) || ((st.vshader & 0x00E) != 0x004 && st.mat[TS_PROJECTION][11] != 0.0f)))
         scene_draws++;
     if (nhud_boxes < MAX_HUD_BOXES && !(st.vshader & 1) && (st.vshader & 0x00E) != 0x004 && hud_ortho()) {
         /* a HUD piece (not a full-width backdrop), for 3D drawn inside it */
