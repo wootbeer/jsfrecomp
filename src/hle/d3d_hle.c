@@ -77,10 +77,14 @@ static uint32_t scene_draws, scene_draws_last;
 /* Screen-space draws on the screen (pretransformed or orthographic: the
  * Flash menus' pieces, the briefing, the HUD), this frame and the last. */
 static uint32_t flat_draws, flat_draws_last;
-/* The part of the screen those cover, visible ones only (summed boxes,
- * as a fraction of the screen): the briefing's panel most of it, the
- * flight HUD a fifth or so. */
-static float flat_area, flat_area_last;
+/* The part of the screen those cover, visible ones only, on a grid of
+ * 32 x 24 cells (a cell counts once however many pieces overlap it: the
+ * HUD's rings are many layered quads): the briefing's panel most of it,
+ * the flight HUD a fifth or so. */
+#define COVER_W 32
+#define COVER_H 24
+static uint32_t cover_cells[COVER_H];
+static float flat_area_last;
 /* A screen over play (the pause menu, the briefing between missions:
  * its 2D over half the screen, the level's 3D behind): the 3D stays wide
  * and every 2D piece, full-width ones too, is squeezed toward the middle
@@ -418,8 +422,14 @@ void sub_0022ADF0(void)
     scene_draws = 0;
     flat_draws_last = flat_draws;
     flat_draws = 0;
-    flat_area_last = flat_area;
-    flat_area = 0.0f;
+    {
+        int n = 0;
+        for (int r = 0; r < COVER_H; r++)
+            for (uint32_t m = cover_cells[r]; m; m &= m - 1)
+                n++;
+        flat_area_last = (float)n / (float)(COVER_W * COVER_H);
+        memset(cover_cells, 0, sizeof cover_cells);
+    }
     jsf_widescreen_frame();     /* the aspect setting changed between 16:9 and 21:9 */
     hud_bars_before = hud_bars_frame;
     hud_bars_frame = false;
@@ -433,17 +443,18 @@ void sub_0022ADF0(void)
         /* What the frame is, from the one before: 0 play; 1 a screen over
          * play -- its 2D panels cover half the screen or more, the level's
          * 3D behind (the pause menu, the briefing between missions):
-         * overlay_screen; 2 a screen of its own -- screen-space draws and
-         * at most 2 depth-tested 3D draws (the menus none, the loading
-         * screen's briefing one; play has 20 or more): drawn and shown at
-         * 4:3. It must hold for 4 frames running to switch. Views
-         * (frustums built) are only logged. */
+         * overlay_screen -- the loading screen's briefing too (one 3D draw
+         * at first, then the level's): it does not snap from one to the
+         * other; 2 a screen of its own -- screen-space draws and no
+         * depth-tested 3D at all (the menus): drawn and shown at 4:3. It
+         * must hold for 4 frames running to switch. Views (frustums
+         * built) are only logged. */
         static int state, streak;
         static const char *const names[3] = { "widescreen again", "a screen over play, its 2D squeezed",
                                               "a static menu, shown at 4:3" };
         unsigned views = jsf_widescreen_take_frustums();
         int now = jsf_settings_get()->aspect == JSF_ASPECT_4_3 || flat_draws_last < 4 ? 0
-                : scene_draws_last <= 2 ? 2
+                : scene_draws_last == 0 ? 2
                 : flat_area_last >= 0.5f ? 1 : 0;
         streak = now == state ? 0 : streak + 1;
         if (streak >= 4 || jsf_settings_get()->aspect == JSF_ASPECT_4_3) {
@@ -2881,10 +2892,17 @@ static void submit_draw(uint32_t type, uint32_t base, uint32_t stride, uint32_t 
         /* panels: a few quads (the star field's hundreds of points span the
          * screen and cover none of it) */
         if (!clear && count <= 32 && screen_box(base, stride, first, count, b)) {
-            float w = SDL_min(b[2], (float)rtw) - SDL_max(b[0], 0.0f);
-            float h = SDL_min(b[3], (float)rth) - SDL_max(b[1], 0.0f);
-            if (w > 0.0f && h > 0.0f)
-                flat_area += w * h / ((float)rtw * (float)rth);
+            /* the cells whose middles the box covers */
+            for (int r = 0; r < COVER_H; r++) {
+                float cy = ((float)r + 0.5f) * (float)rth / COVER_H;
+                if (cy < b[1] || cy > b[3])
+                    continue;
+                for (int c = 0; c < COVER_W; c++) {
+                    float cx = ((float)c + 0.5f) * (float)rtw / COVER_W;
+                    if (cx >= b[0] && cx <= b[2])
+                        cover_cells[r] |= 1u << c;
+                }
+            }
         }
     }
     if (nhud_boxes < MAX_HUD_BOXES && !(st.vshader & 1) && (st.vshader & 0x00E) != 0x004 && hud_ortho()) {
