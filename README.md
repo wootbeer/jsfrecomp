@@ -11,11 +11,30 @@ Built the same way as, and from the code of,
 Unofficial, and not affiliated with the rights holders. **No game data is
 included.** You need your own copy of the game to play this.
 
-**Early bring-up.** The game recompiles and builds; it does not play yet.
+**Work in progress, not released yet.** No builds to download: build it
+yourself (below) if you want to follow along. Tested on Windows.
 
-## Planned features
+## Status
 
-The same launcher and F1 menu as Orta Recomp:
+- Boots to the logos (Bink movies), the title and the menus, with sound
+  and music.
+- The first training mission plays through: flight, the HUD, voice lines,
+  the pause menu.
+- Controllers (with vibration) and keyboard and mouse.
+- Widescreen 16:9 and 21:9: a wider view, the HUD centered or out at the
+  screen's edges (in progress: menus show at 4:3).
+- Higher resolutions, MSAA/FXAA, frame interpolation and the rest of the
+  F1 menu, from Orta Recomp.
+
+Known issues:
+
+- Some menus come out zoomed in at higher render scales (being looked
+  into).
+- Shiny reflections (environment mapping) are not drawn yet.
+- Only the first missions have been tried; later ones may hit missing
+  pieces.
+
+## Features (from Orta Recomp's launcher and F1 menu)
 
 - Game file picker: your disc image (ISO) or an extracted game folder,
   checked against the known USA release
@@ -24,7 +43,7 @@ The same launcher and F1 menu as Orta Recomp:
 - Color correction, CRT look, bloom
 - 3D sound, 5.1, reverb, master volume
 - Controllers with vibration, keyboard and mouse, rebindable; touch controls
-  on Android
+  on Android (untested)
 - Save slots, shader cache
 
 ## Game files
