@@ -415,19 +415,27 @@ void sub_0022ADF0(void)
     hud_backdrop_run = hud_backdrop_frame ? hud_backdrop_run + 1 : 0;
     hud_backdrop_frame = false;
     hud_menu_log();
-    /* A static menu (a menu's backdrop, and under 30 3D draws: not the
-     * title over the attract demo) is drawn and shown at 4:3. */
+    /* A screen of its own (a menu, the briefing) is drawn and shown at 4:3. */
     {
         static bool was;
         static int logged;
-        /* A screen of its own: screen-space draws and no 3D scene drawn --
-         * the menus, the loading screen's briefing (whose camera is built
-         * meanwhile, so views are only logged) -- or many of them and next
-         * to no 3D (the profile menu's sphere) */
+        /* A screen of its own: screen-space draws and next to no 3D (at
+         * most 2 depth-tested 3D draws: the menus have none, the
+         * briefing one; play has 20 or more even in empty space). It must
+         * hold for 4 frames running to switch either way, so play never
+         * flickers to 4:3. Views (frustums built) are only logged: the
+         * level's camera is built while the briefing is up. */
+        static int streak;
         unsigned views = jsf_widescreen_take_frustums();
-        bool menu = jsf_settings_get()->aspect != JSF_ASPECT_4_3 &&
-                    ((flat_draws_last >= 4 && scene_draws_last == 0) ||
-                     (flat_draws_last >= 40 && scene_draws_last < 30));
+        bool now = jsf_settings_get()->aspect != JSF_ASPECT_4_3 && flat_draws_last >= 4 && scene_draws_last <= 2;
+        bool menu = was;
+        streak = now == was ? 0 : streak + 1;
+        if (streak >= 4) {
+            menu = now;
+            streak = 0;
+        }
+        if (jsf_settings_get()->aspect == JSF_ASPECT_4_3)
+            menu = false;
         jsf_widescreen_set_menu(menu);
         if (menu != was && logged++ < 40)
             SDL_Log("widescreen: %s at frame %llu (the frame before: %u depth-tested 3D draws, %u flat ones, "
