@@ -446,9 +446,8 @@ void sub_0022ADF0(void)
          * overlay_screen -- the loading screen's briefing too (one 3D draw
          * at first, then the level's): it does not snap from one to the
          * other; 2 a screen of its own -- screen-space draws and no
-         * depth-tested 3D at all (the menus): drawn and shown at 4:3. It
-         * must hold for 4 frames running to switch. Views (frustums
-         * built) are only logged. */
+         * depth-tested 3D at all (the menus): drawn and shown at 4:3.
+         * Views (frustums built) are only logged. */
         static int state, streak;
         static const char *const names[3] = { "widescreen again", "a screen over play, its 2D squeezed",
                                               "a static menu, shown at 4:3" };
@@ -456,8 +455,11 @@ void sub_0022ADF0(void)
         int now = jsf_settings_get()->aspect == JSF_ASPECT_4_3 || flat_draws_last < 4 ? 0
                 : scene_draws_last == 0 ? 2
                 : flat_area_last >= 0.5f ? 1 : 0;
+        /* into a screen at once (its first frames were drawn by play's
+         * rules, then snapped: the pause menu); back to play after 4
+         * frames running, so play never flickers */
         streak = now == state ? 0 : streak + 1;
-        if (streak >= 4 || jsf_settings_get()->aspect == JSF_ASPECT_4_3) {
+        if (streak >= (now != 0 ? 1 : 4) || jsf_settings_get()->aspect == JSF_ASPECT_4_3) {
             if (now != state && logged++ < 40)
                 SDL_Log("widescreen: %s at frame %llu (the frame before: %u depth-tested 3D draws, %u flat ones "
                         "covering %.0f%% of the screen, %u views)", names[now],
@@ -2885,8 +2887,9 @@ static void submit_draw(uint32_t type, uint32_t base, uint32_t stride, uint32_t 
         int rtw, rth;
         bool clear = false;
         flat_draws++;
-        /* nearly transparent (a fade at rest): not covering anything */
-        if ((st.vshader & 0x040) && layout_fvf(st.vshader, &lo))
+        /* untextured and nearly transparent (a fade at rest): not covering
+         * anything; a textured panel fading in counts from its first frame */
+        if (!st.tex[0] && (st.vshader & 0x040) && layout_fvf(st.vshader, &lo))
             clear = (MEM32(base + first * stride + lo.diffuse_off) >> 24) < 0x20;
         target_size(&rtw, &rth);
         /* panels: a few quads (the star field's hundreds of points span the
