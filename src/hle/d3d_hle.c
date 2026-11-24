@@ -74,6 +74,9 @@ static uint32_t draws_called, draws_drawn, draws_dropped;
  * frame and the last: a menu with a 3D scene behind it (the title over the
  * attract demo) stays widescreen; one without is shown at 4:3. */
 static uint32_t scene_draws, scene_draws_last;
+/* Draws on the screen with the depth test off (the Flash menus' pieces,
+ * the HUD), this frame and the last. */
+static uint32_t flat_draws, flat_draws_last;
 
 #define MAX_HUD_BOXES 64
 static struct { float b[4], anchor; } hud_boxes[MAX_HUD_BOXES];
@@ -404,6 +407,8 @@ void sub_0022ADF0(void)
     nhud_boxes = 0;
     scene_draws_last = scene_draws;
     scene_draws = 0;
+    flat_draws_last = flat_draws;
+    flat_draws = 0;
     jsf_widescreen_frame();     /* the aspect setting changed between 16:9 and 21:9 */
     hud_bars_before = hud_bars_frame;
     hud_bars_frame = false;
@@ -415,12 +420,13 @@ void sub_0022ADF0(void)
     {
         static bool was;
         static int logged;
-        bool menu = jsf_settings_get()->aspect != JSF_ASPECT_4_3 && hud_menu() && scene_draws_last < 30;
+        /* many flat draws and next to no 3D: a menu screen of its own */
+        bool menu = jsf_settings_get()->aspect != JSF_ASPECT_4_3 && flat_draws_last >= 40 && scene_draws_last < 30;
         jsf_widescreen_set_menu(menu);
         if (menu != was && logged++ < 40)
-            SDL_Log("widescreen: %s at frame %llu (%u depth-tested 3D draws the frame before)",
+            SDL_Log("widescreen: %s at frame %llu (the frame before: %u depth-tested 3D draws, %u flat ones)",
                     menu ? "a static menu, shown at 4:3" : "widescreen again", (unsigned long long)jsf_gfx_frame_count(),
-                    scene_draws_last);
+                    scene_draws_last, flat_draws_last);
         was = menu;
     }
     if (swap_interval > 0) {
@@ -2613,9 +2619,8 @@ static bool hud_sprite(uint32_t base, uint32_t stride, uint32_t first, uint32_t 
     float wvp[16];
     int rtw = 640, rth = 480;
 
-    /* by the setting, not jsf_widescreen_active: menu screens are found
-     * here (hud_squeeze) also while one is shown at 4:3 */
-    if (!count || count > 4096 || jsf_settings_get()->aspect == JSF_ASPECT_4_3 || (st.vshader & 1))
+    /* nothing at 4:3, nor on a menu screen shown at 4:3: drawn as the game makes it */
+    if (!count || count > 4096 || !jsf_widescreen_active() || (st.vshader & 1))
         return false;
     pre = (st.vshader & 0x00E) == 0x004;
     if (!pre) {
@@ -2813,6 +2818,8 @@ static void submit_draw(uint32_t type, uint32_t base, uint32_t stride, uint32_t 
     if (!cur_rt.data && RS(RS_ZENABLE) &&
         ((st.vshader & 1) || ((st.vshader & 0x00E) != 0x004 && st.mat[TS_PROJECTION][11] != 0.0f)))
         scene_draws++;
+    if (!cur_rt.data && !RS(RS_ZENABLE))
+        flat_draws++;
     if (nhud_boxes < MAX_HUD_BOXES && !(st.vshader & 1) && (st.vshader & 0x00E) != 0x004 && hud_ortho()) {
         /* a HUD piece (not a full-width backdrop), for 3D drawn inside it */
         float b[4];
