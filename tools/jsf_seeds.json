@@ -43,5 +43,11 @@
   {"start": "0x0006858F", "observed": false, "note": "a wrapper beside 0x00068449 in the same run of thunks (a linear walk from 0x00068396), also missed by the sweep"},
   {"start": "0x00184657", "observed": true, "note": "indirect call target in the training level: a jmp thunk; not found by the static sweep"},
   {"start": "0x0020786D", "observed": true, "note": "the C runtime's x87 math (a dispatch entry, called through its tables in the level); not found by the static sweep"},
-  {"start": "0x0020892D", "observed": true, "note": "the C runtime's x87 math (exp's core, called through the dispatcher about 300,000 times in a level); not found by the static sweep"}
+  {"start": "0x0020892D", "observed": true, "note": "the C runtime's x87 math (exp's core, called through the dispatcher about 300,000 times in a level); not found by the static sweep"},
+  {"start": "0x0012310D", "observed": false, "note": "a wrapper around __RTDynamicCast (0x00202EBD) after another function's ret; missed by the sweep (found by its pattern)"},
+  {"start": "0x00129F97", "observed": false, "note": "a wrapper around __RTDynamicCast (0x00202EBD) after another function's ret; missed by the sweep (found by its pattern)"},
+  {"start": "0x0012BDA7", "observed": true, "note": "indirect call target opening the credits (owner's run): a wrapper around __RTDynamicCast (0x00202EBD) after another function's ret; missed by the sweep (found by its pattern)"},
+  {"start": "0x0012BDC5", "observed": false, "note": "a wrapper around __RTDynamicCast (0x00202EBD) after another function's ret; missed by the sweep (found by its pattern)"},
+  {"start": "0x0012BDE3", "observed": false, "note": "a wrapper around __RTDynamicCast (0x00202EBD) after another function's ret; missed by the sweep (found by its pattern)"},
+  {"start": "0x0012BE01", "observed": false, "note": "a wrapper around __RTDynamicCast (0x00202EBD) after another function's ret; missed by the sweep (found by its pattern)"}
 ]

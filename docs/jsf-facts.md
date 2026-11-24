@@ -255,3 +255,13 @@ code 0x001FEB80 and 0x001FEC60.
   suspect from that batch of seeds is the thunk 0x00184657 (jmp
   0x000351E9: calls 0x000437CF, then 0x000D4397(this->[0], 1)):
   JSF_SKIP_184657=1 skips it as before.
+
+## The credits
+
+- No credits movie: `creditsprep.con`, then a live scene (`credits.wrl`)
+  with `Streams\Music\credits.wav`. Opening them called 0x0012BDA7, a
+  wrapper around `__RTDynamicCast` (0x00202EBD) the sweep missed: the
+  call was skipped, nothing scrolled and the screen took no input. Six
+  such wrappers had no code (found by their pattern: push 0, push the
+  two type descriptors, push 0, push ecx, call 0x00202EBD, right after
+  another function's end): seeds.
