@@ -545,6 +545,18 @@ void jsf_gfx_draw(const jsf_draw *d, const jsf_vertex *v, uint32_t nv,
     F->nindices += ni;
 }
 
+uint32_t jsf_gfx_vertex_mark(void)
+{
+    RECORDING();
+    return F->nverts;
+}
+
+jsf_vertex *jsf_gfx_frame_vertices(uint32_t first, uint32_t n)
+{
+    RECORDING();
+    return first <= F->nverts && n <= F->nverts - first ? F->verts + first : NULL;
+}
+
 void jsf_gfx_set_draw_source(const void *src)
 {
     draw_src = (uintptr_t)src;

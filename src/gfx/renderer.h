@@ -153,6 +153,10 @@ void jsf_gfx_draw(const jsf_draw *d, const jsf_vertex *v, uint32_t nv,
  * of the game's vertex data), so frame interpolation can find the same
  * draw in the next frame. */
 void jsf_gfx_set_draw_source(const void *src);
+/* The vertices recorded so far this frame: how many, and n of them from
+ * first (NULL if out of range), to change before the frame is presented. */
+uint32_t jsf_gfx_vertex_mark(void);
+jsf_vertex *jsf_gfx_frame_vertices(uint32_t first, uint32_t n);
 /* This frame shows a movie, its picture in that rectangle of the back
  * buffer (pixels). If nothing else is drawn but fades and screen-space
  * words (subtitles, laid over the picture's bottom), the window shows

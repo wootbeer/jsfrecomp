@@ -102,6 +102,20 @@ static int nhud_boxes;
 #define MAX_PLAY_PIECES 128
 static struct { float b[4], anchor; } play_pieces[2][MAX_PLAY_PIECES];
 static int nplay_pieces[2], play_fill;
+/* The frame's screen-space draws, as drawn: which rules a frame is drawn by
+ * is known from the frame before, so a new screen's first frame (the pause
+ * panel's, a menu's, play's after either) was drawn by the last one's and
+ * snapped into place a frame later. At the Swap that finds the change, the
+ * frame's 2D is squeezed again by the new rules before it is shown. */
+typedef struct {
+    uint32_t v0, nv;        /* its vertices in the frame */
+    float b[4];             /* bounds, the game's pixels */
+    bool full, tex;         /* as wide as the screen; textured */
+    float k, at;            /* the squeeze it got */
+} flat_rec;
+static flat_rec *flat_recs;
+static uint32_t nflat_recs, cap_flat_recs;
+static void resqueeze_frame(int state);
 
 static uint32_t take(uint32_t *v)
 {
@@ -473,6 +487,9 @@ void sub_0022ADF0(void)
          * and play's first frames after it, by the other's rules, then
          * snapped */
         streak = now == state ? 0 : streak + 1;
+        if (now != state && jsf_settings_get()->aspect != JSF_ASPECT_4_3)
+            resqueeze_frame(now);
+        nflat_recs = 0;
         if (streak >= 1 || jsf_settings_get()->aspect == JSF_ASPECT_4_3) {
             if (now != state && logged++ < 40)
                 SDL_Log("widescreen: %s at frame %llu (the frame before: %u depth-tested 3D draws, %u flat ones "
@@ -2799,6 +2816,48 @@ static float piece_anchor(const float b[4], int rtw, int rth, bool record)
     return a;
 }
 
+/* A screen-space draw's squeeze under the rules of state s (0 play, 1 a
+ * screen over play, 2 a menu at 4:3), as hud_squeeze would give it. */
+static void squeeze_for(const flat_rec *r, int s, float *k, float *at)
+{
+    int rtw, rth;
+    bool over = overlay_screen;
+
+    *k = 1.0f;
+    *at = 0.0f;
+    if (s == 2)
+        return;
+    target_size(&rtw, &rth);
+    if (r->full) {
+        if (s == 1 && r->tex)
+            *k = jsf_widescreen_k();
+        return;
+    }
+    *k = jsf_widescreen_k();
+    overlay_screen = s == 1;        /* piece_anchor's rules for s, recording nothing */
+    *at = piece_anchor(r->b, rtw, rth, false);
+    overlay_screen = over;
+}
+
+static void resqueeze_frame(int s)
+{
+    for (uint32_t i = 0; i < nflat_recs; i++) {
+        flat_rec *r = &flat_recs[i];
+        jsf_vertex *v = jsf_gfx_frame_vertices(r->v0, r->nv);
+        float k, at;
+        if (!v || r->k == 0.0f)
+            continue;
+        squeeze_for(r, s, &k, &at);
+        if (k == r->k && at == r->at)
+            continue;
+        for (uint32_t j = 0; j < r->nv; j++) {
+            float w = v[j].pos[3];
+            float x = r->at * w + (v[j].pos[0] - r->at * w) / r->k;    /* as the game made it */
+            v[j].pos[0] = at * w + (x - at * w) * k;
+        }
+    }
+}
+
 static void hud_squeeze(uint32_t base, uint32_t stride, uint32_t first, uint32_t count, float *k, float *anchor)
 {
     float b[4];
@@ -2915,6 +2974,8 @@ static void submit_draw(uint32_t type, uint32_t base, uint32_t stride, uint32_t 
     bool fvf_on_gpu = false;                /* or the fixed-function vertices do */
     bool cpu_too = true;                    /* and the CPU makes the vertices as well */
     float hud_k, hud_at;                    /* a HUD sprite's squeeze, on a wider screen, and about where */
+    flat_rec rec;                           /* a screen-space draw, for resqueeze_frame */
+    bool flat2d = false;
 
     state_init();
     /* A 3D scene draws with the depth test on; the Flash menus' pieces
@@ -2967,6 +3028,15 @@ static void submit_draw(uint32_t type, uint32_t base, uint32_t stride, uint32_t 
     if (cutscene_bars(base, stride, first, count))
         return;
     hud_squeeze(base, stride, first, count, &hud_k, &hud_at);
+    if (type != 1 && !cur_rt.data && screen_box(base, stride, first, count, rec.b)) {
+        int rtw, rth;
+        target_size(&rtw, &rth);
+        flat2d = true;
+        rec.full = rec.b[0] <= 0.5f && rec.b[2] >= (float)rtw - 1.5f;
+        rec.tex = st.tex[0] != 0;
+        rec.k = hud_k;
+        rec.at = hud_at;
+    }
     if (count > vcap) {
         vcap = count * 2;
         vbuf = SDL_realloc(vbuf, vcap * sizeof *vbuf);
@@ -3030,7 +3100,7 @@ static void submit_draw(uint32_t type, uint32_t base, uint32_t stride, uint32_t 
                 last = jsf_gfx_frame_count();
             }
         }
-    } else if (type != 1 && hud_k == 1.0f && jsf_settings_get()->gpu_fixed &&
+    } else if (type != 1 && hud_k == 1.0f && !flat2d && jsf_settings_get()->gpu_fixed &&
                !jsf_gfx_vertex_shader_failed(true) &&
                fvf_on_gpu_job(base, stride, first, count, &gpu_f)) {
         fvf_on_gpu = true;
@@ -3148,7 +3218,16 @@ static void submit_draw(uint32_t type, uint32_t base, uint32_t stride, uint32_t 
         /* The game's vertex data, so interpolation can find this draw in
          * the next frame. */
         jsf_gfx_set_draw_source((const void *)XBOX_PTR(base + first * stride));
+        rec.v0 = jsf_gfx_vertex_mark();
         jsf_gfx_draw(&d, vbuf, count, ibuf, ni);
+        rec.nv = jsf_gfx_vertex_mark() - rec.v0;
+        if (flat2d && rec.nv == count) {
+            if (nflat_recs == cap_flat_recs) {
+                cap_flat_recs = cap_flat_recs ? cap_flat_recs * 2 : 256;
+                flat_recs = SDL_realloc(flat_recs, cap_flat_recs * sizeof *flat_recs);
+            }
+            flat_recs[nflat_recs++] = rec;
+        }
     }
     draws_drawn++;
 }
