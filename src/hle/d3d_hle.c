@@ -2911,58 +2911,49 @@ static void resqueeze_frame(int s)
     }
 }
 
-/* A lock-on bracket is four corners, each its own draw of the same small
- * sprite, one after another (28-31 in a capture: 15x16 each); near the side of the 4:3 picture its outer
- * corners took the rule for the markers of targets off the screen (single
- * sprites) and went to the side, the inner ones stayed on the ship. At
- * the end of the frame, a run of four draws of the same texture and size
- * at a rectangle's corners, small and not part of a corner panel
- * (in_big_piece), is put back
- * about the middle, whole, where the 3D it marks is. */
+/* A lock-on bracket is drawn as pieces of one texture, one after another:
+ * the yellow one four 15x16 corners, the green one (the target) eight
+ * pieces of an atlas (corners, ticks, the health arc). Near the side of the
+ * 4:3 picture its outer pieces took the rule for the markers of targets off
+ * the screen and went to the side; the inner ones stayed on the ship. At
+ * the end of the frame, a run of two or more draws of the same texture,
+ * small, close together (within half the screen each way), some put
+ * against a side and not as part of a corner panel (in_big_piece), is put
+ * back about the middle, whole, where the 3D it marks is. A marker of a
+ * target off the screen is a single sprite and keeps its side. */
 static void keep_groups_whole(void)
 {
-    for (uint32_t i = 0; i < nflat_recs;) {
-        flat_rec *r = &flat_recs[i];
-        float w = r->b[2] - r->b[0], h = r->b[3] - r->b[1];
-        uint32_t n = 1;
-        bool moved = false, panel = true;
+    int rtw, rth;
 
-        if (r->full || !r->tex0 || (w >= 64.0f && h >= 64.0f)) {
+    target_size(&rtw, &rth);
+    for (uint32_t i = 0; i < nflat_recs;) {
+        const flat_rec *r = &flat_recs[i];
+        float u[4];
+        uint32_t n = 1;
+        bool moved = false;
+
+        if (r->full || !r->tex0 || (r->b[2] - r->b[0] >= 64.0f && r->b[3] - r->b[1] >= 64.0f)) {
             i++;
             continue;
         }
+        memcpy(u, r->b, sizeof u);
         while (i + n < nflat_recs) {
             const flat_rec *q = &flat_recs[i + n];
-            if (q->full || q->tex0 != r->tex0 || SDL_fabsf(q->b[2] - q->b[0] - w) > 0.5f ||
-                SDL_fabsf(q->b[3] - q->b[1] - h) > 0.5f)
+            if (q->full || q->tex0 != r->tex0 || (q->b[2] - q->b[0] >= 64.0f && q->b[3] - q->b[1] >= 64.0f))
                 break;
+            u[0] = SDL_min(u[0], q->b[0]);
+            u[1] = SDL_min(u[1], q->b[1]);
+            u[2] = SDL_max(u[2], q->b[2]);
+            u[3] = SDL_max(u[3], q->b[3]);
             n++;
         }
-        if (n != 4) {           /* a bracket is four; markers of targets off the screen are single */
-            i += n;
-            continue;
-        }
-        {   /* the four at the corners of a rectangle: two lefts, two tops (in the game's pixels) */
-            int same_x = 0, same_y = 0;
-            for (uint32_t j = i; j < i + 4; j++)
-                for (uint32_t m = j + 1; m < i + 4; m++) {
-                    same_x += SDL_fabsf(flat_recs[j].b[0] - flat_recs[m].b[0]) < 1.0f;
-                    same_y += SDL_fabsf(flat_recs[j].b[1] - flat_recs[m].b[1]) < 1.0f;
-                }
-            if (same_x != 2 || same_y != 2) {
-                i += n;
-                continue;
-            }
-        }
-        for (uint32_t j = i; j < i + n; j++) {
-            moved |= flat_recs[j].at != 0.0f;
-            panel &= flat_recs[j].at != 0.0f && in_big_piece(flat_recs[j].b, flat_recs[j].at);
-        }
-        if (moved && !panel)
+        for (uint32_t j = i; j < i + n; j++)
+            moved |= flat_recs[j].at != 0.0f && !in_big_piece(flat_recs[j].b, flat_recs[j].at);
+        if (n >= 2 && moved && u[2] - u[0] < 0.5f * (float)rtw && u[3] - u[1] < 0.5f * (float)rth)
             for (uint32_t j = i; j < i + n; j++) {
                 flat_rec *q = &flat_recs[j];
                 jsf_vertex *v = jsf_gfx_frame_vertices(q->v0, q->nv);
-                if (!v || q->at == 0.0f || q->k == 0.0f)
+                if (!v || q->at == 0.0f || q->k == 0.0f || in_big_piece(q->b, q->at))
                     continue;
                 for (uint32_t m = 0; m < q->nv; m++) {
                     float vw = v[m].pos[3];
