@@ -2911,57 +2911,85 @@ static void resqueeze_frame(int s)
     }
 }
 
-/* A lock-on bracket is drawn as pieces of one texture, one after another:
- * the yellow one four 15x16 corners, the green one (the target) eight
- * pieces of an atlas (corners, ticks, the health arc). Near the side of the
- * 4:3 picture its outer pieces took the rule for the markers of targets off
- * the screen and went to the side; the inner ones stayed on the ship. At
- * the end of the frame, a run of two or more draws of the same texture,
- * small, close together (within half the screen each way), some put
- * against a side and not as part of a corner panel (in_big_piece), is put
- * back about the middle, whole, where the 3D it marks is. A marker of a
- * target off the screen is a single sprite and keeps its side. */
+/* A target's markings are many small draws: the lock-on bracket in pieces
+ * of one texture (the yellow one four 15x16 corners, the green one eight
+ * pieces of an atlas), and around it pieces of other textures (the lead
+ * arrow, the health and shield arcs); a target off the screen gets an arrow
+ * and arcs at the side instead, no bracket. The side rules, piece by piece,
+ * split them: near the side of the 4:3 picture the outer pieces went to the
+ * side of the wide one and the inner ones stayed. At the end of the frame
+ * the small pieces outside the corner panels are grouped by distance
+ * (within 32 of the game's pixels of each other); a group with a piece put
+ * against a side goes whole: with a bracket in it (two pieces of one
+ * texture) about the middle, where the ship is; without, the marker of a
+ * target off the screen, to that side. */
+#define MAX_GROUPED 512
 static void keep_groups_whole(void)
 {
-    int rtw, rth;
+    static uint16_t idx[MAX_GROUPED], parent[MAX_GROUPED];
+    uint32_t n = 0;
 
-    target_size(&rtw, &rth);
-    for (uint32_t i = 0; i < nflat_recs;) {
+    for (uint32_t i = 0; i < nflat_recs && n < MAX_GROUPED; i++) {
         const flat_rec *r = &flat_recs[i];
-        float u[4];
-        uint32_t n = 1;
-        bool moved = false;
-
-        if (r->full || !r->tex0 || (r->b[2] - r->b[0] >= 64.0f && r->b[3] - r->b[1] >= 64.0f)) {
-            i++;
+        if (r->full || !r->tex0 || r->k == 0.0f || (r->b[2] - r->b[0] >= 64.0f && r->b[3] - r->b[1] >= 64.0f) ||
+            (r->at != 0.0f && in_big_piece(r->b, r->at)))
             continue;
+        idx[n] = (uint16_t)i;
+        parent[n] = (uint16_t)n;
+        n++;
+    }
+    for (uint32_t a = 0; a < n; a++)
+        for (uint32_t b = a + 1; b < n; b++) {
+            const float *p = flat_recs[idx[a]].b, *q = flat_recs[idx[b]].b;
+            uint32_t ra = a, rb = b;
+            if (p[0] > q[2] + 32.0f || q[0] > p[2] + 32.0f || p[1] > q[3] + 32.0f || q[1] > p[3] + 32.0f)
+                continue;
+            while (parent[ra] != ra)
+                ra = parent[ra];
+            while (parent[rb] != rb)
+                rb = parent[rb];
+            if (ra != rb)
+                parent[rb] = (uint16_t)ra;
         }
-        memcpy(u, r->b, sizeof u);
-        while (i + n < nflat_recs) {
-            const flat_rec *q = &flat_recs[i + n];
-            if (q->full || q->tex0 != r->tex0 || (q->b[2] - q->b[0] >= 64.0f && q->b[3] - q->b[1] >= 64.0f))
-                break;
-            u[0] = SDL_min(u[0], q->b[0]);
-            u[1] = SDL_min(u[1], q->b[1]);
-            u[2] = SDL_max(u[2], q->b[2]);
-            u[3] = SDL_max(u[3], q->b[3]);
-            n++;
-        }
-        for (uint32_t j = i; j < i + n; j++)
-            moved |= flat_recs[j].at != 0.0f && !in_big_piece(flat_recs[j].b, flat_recs[j].at);
-        if (n >= 2 && moved && u[2] - u[0] < 0.5f * (float)rtw && u[3] - u[1] < 0.5f * (float)rth)
-            for (uint32_t j = i; j < i + n; j++) {
-                flat_rec *q = &flat_recs[j];
-                jsf_vertex *v = jsf_gfx_frame_vertices(q->v0, q->nv);
-                if (!v || q->at == 0.0f || q->k == 0.0f || in_big_piece(q->b, q->at))
-                    continue;
-                for (uint32_t m = 0; m < q->nv; m++) {
-                    float vw = v[m].pos[3];
-                    v[m].pos[0] -= q->at * vw * (1.0f - q->k);    /* k x + a(1-k)w -> k x */
+    for (uint32_t g = 0; g < n; g++) {
+        float side = 0.0f, to;
+        bool bracket = false;
+        uint32_t members = 0;
+
+        if (parent[g] != g)
+            continue;
+        for (uint32_t a = 0; a < n; a++) {
+            uint32_t ra = a;
+            while (parent[ra] != ra)
+                ra = parent[ra];
+            if (ra != g)
+                continue;
+            members++;
+            if (side == 0.0f)
+                side = flat_recs[idx[a]].at;
+            for (uint32_t b = a + 1; b < n && !bracket; b++)
+                if (flat_recs[idx[b]].tex0 == flat_recs[idx[a]].tex0) {
+                    uint32_t rb = b;
+                    while (parent[rb] != rb)
+                        rb = parent[rb];
+                    bracket = rb == g;
                 }
-                q->at = 0.0f;
-            }
-        i += n;
+        }
+        if (members < 2 || side == 0.0f)
+            continue;
+        to = bracket ? 0.0f : side;
+        for (uint32_t a = 0; a < n; a++) {
+            uint32_t ra = a;
+            flat_rec *q = &flat_recs[idx[a]];
+            jsf_vertex *v;
+            while (parent[ra] != ra)
+                ra = parent[ra];
+            if (ra != g || q->at == to || !(v = jsf_gfx_frame_vertices(q->v0, q->nv)))
+                continue;
+            for (uint32_t m = 0; m < q->nv; m++)    /* k x + a(1-k)w, a from q->at to 'to' */
+                v[m].pos[0] += (to - q->at) * v[m].pos[3] * (1.0f - q->k);
+            q->at = to;
+        }
     }
 }
 
