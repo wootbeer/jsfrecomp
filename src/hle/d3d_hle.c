@@ -115,11 +115,13 @@ typedef struct {
     uint32_t v0, nv;        /* its vertices in the frame */
     float b[4];             /* bounds, the game's pixels */
     bool full, tex;         /* as wide as the screen; textured */
+    uint32_t tex0;          /* its texture's address */
     float k, at;            /* the squeeze it got */
 } flat_rec;
 static flat_rec *flat_recs;
 static uint32_t nflat_recs, cap_flat_recs;
 static void resqueeze_frame(int state);
+static void keep_groups_whole(void);
 
 static uint32_t take(uint32_t *v)
 {
@@ -495,6 +497,7 @@ void sub_0022ADF0(void)
         streak = now == state ? 0 : streak + 1;
         if (now != state && jsf_settings_get()->aspect != JSF_ASPECT_4_3)
             resqueeze_frame(now);
+        keep_groups_whole();
         nflat_recs = 0;
         if (streak >= 1 || jsf_settings_get()->aspect == JSF_ASPECT_4_3) {
             if (now != state && logged++ < 40)
@@ -2777,6 +2780,19 @@ static bool hud_sprite(uint32_t base, uint32_t stride, uint32_t first, uint32_t 
  * each its own draw) straddling the line between the middle and the
  * bottom part split in two: its lower corners went to the side. */
 
+/* Whether a piece lies inside a big one put against side a. */
+static bool in_big_piece(const float b[4], float a)
+{
+    for (int f = 0; f < 2; f++)
+        for (int i = 0; i < nbig_pieces[f]; i++) {
+            const float *p = big_pieces[f][i].b;
+            if (big_pieces[f][i].anchor == a && b[0] >= p[0] - 8.0f && b[2] <= p[2] + 8.0f &&
+                b[1] >= p[1] - 8.0f && b[3] <= p[3] + 8.0f)
+                return true;
+        }
+    return false;
+}
+
 static float side_piece(const float b[4], float a)
 {
     float w = b[2] - b[0], h = b[3] - b[1];
@@ -2793,14 +2809,7 @@ static float side_piece(const float b[4], float a)
         }
         return a;
     }
-    for (int f = 0; f < 2; f++)
-        for (int i = 0; i < nbig_pieces[f]; i++) {
-            const float *p = big_pieces[f][i].b;
-            if (big_pieces[f][i].anchor == a && b[0] >= p[0] - 8.0f && b[2] <= p[2] + 8.0f &&
-                b[1] >= p[1] - 8.0f && b[3] <= p[3] + 8.0f)
-                return a;
-        }
-    return 0.0f;
+    return in_big_piece(b, a) ? a : 0.0f;
 }
 
 static float hud_anchor(const float b[4], int rtw, int rth)
@@ -2897,6 +2906,71 @@ static void resqueeze_frame(int s)
             float x = r->at * w + (v[j].pos[0] - r->at * w) / r->k;    /* as the game made it */
             v[j].pos[0] = at * w + (x - at * w) * k;
         }
+        r->k = k;
+        r->at = at;
+    }
+}
+
+/* A lock-on bracket is four corners, each its own draw of the same small
+ * sprite, one after another (28-31 in a capture: 15x16 each); near the side of the 4:3 picture its outer
+ * corners took the rule for the markers of targets off the screen (single
+ * sprites) and went to the side, the inner ones stayed on the ship. At
+ * the end of the frame, a run of four draws of the same texture and size
+ * at a rectangle's corners, small and not part of a corner panel
+ * (in_big_piece), is put back
+ * about the middle, whole, where the 3D it marks is. */
+static void keep_groups_whole(void)
+{
+    for (uint32_t i = 0; i < nflat_recs;) {
+        flat_rec *r = &flat_recs[i];
+        float w = r->b[2] - r->b[0], h = r->b[3] - r->b[1];
+        uint32_t n = 1;
+        bool moved = false, panel = true;
+
+        if (r->full || !r->tex0 || (w >= 64.0f && h >= 64.0f)) {
+            i++;
+            continue;
+        }
+        while (i + n < nflat_recs) {
+            const flat_rec *q = &flat_recs[i + n];
+            if (q->full || q->tex0 != r->tex0 || SDL_fabsf(q->b[2] - q->b[0] - w) > 0.5f ||
+                SDL_fabsf(q->b[3] - q->b[1] - h) > 0.5f)
+                break;
+            n++;
+        }
+        if (n != 4) {           /* a bracket is four; markers of targets off the screen are single */
+            i += n;
+            continue;
+        }
+        {   /* the four at the corners of a rectangle: two lefts, two tops (in the game's pixels) */
+            int same_x = 0, same_y = 0;
+            for (uint32_t j = i; j < i + 4; j++)
+                for (uint32_t m = j + 1; m < i + 4; m++) {
+                    same_x += SDL_fabsf(flat_recs[j].b[0] - flat_recs[m].b[0]) < 1.0f;
+                    same_y += SDL_fabsf(flat_recs[j].b[1] - flat_recs[m].b[1]) < 1.0f;
+                }
+            if (same_x != 2 || same_y != 2) {
+                i += n;
+                continue;
+            }
+        }
+        for (uint32_t j = i; j < i + n; j++) {
+            moved |= flat_recs[j].at != 0.0f;
+            panel &= flat_recs[j].at != 0.0f && in_big_piece(flat_recs[j].b, flat_recs[j].at);
+        }
+        if (moved && !panel)
+            for (uint32_t j = i; j < i + n; j++) {
+                flat_rec *q = &flat_recs[j];
+                jsf_vertex *v = jsf_gfx_frame_vertices(q->v0, q->nv);
+                if (!v || q->at == 0.0f || q->k == 0.0f)
+                    continue;
+                for (uint32_t m = 0; m < q->nv; m++) {
+                    float vw = v[m].pos[3];
+                    v[m].pos[0] -= q->at * vw * (1.0f - q->k);    /* k x + a(1-k)w -> k x */
+                }
+                q->at = 0.0f;
+            }
+        i += n;
     }
 }
 
@@ -3076,6 +3150,7 @@ static void submit_draw(uint32_t type, uint32_t base, uint32_t stride, uint32_t 
         flat2d = true;
         rec.full = rec.b[0] <= 0.5f && rec.b[2] >= (float)rtw - 1.5f;
         rec.tex = st.tex[0] != 0;
+        rec.tex0 = st.tex[0];
         rec.k = hud_k;
         rec.at = hud_at;
     }
