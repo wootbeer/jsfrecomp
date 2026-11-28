@@ -26,6 +26,8 @@
 #include "recomp_types.h"
 #include "config.h"
 
+#include <SDL3/SDL.h>
+
 #include <math.h>
 
 /* A static menu screen (d3d_hle.c: a menu's backdrop and little 3D)
@@ -106,4 +108,41 @@ void sub_000169BF(void)
     sub_000169BF_gen();
     MEMF(cam + 0x90) = fov;
     MEMF(cam + 0x94) = aspect;
+}
+
+/* A target's marker (0x0012204E, thiscall on the marker; the camera in
+ * edi): after drawing the bracket it tests whether the target, its screen
+ * position (0x000271ED, the 4:3 picture's pixels) plus and minus the
+ * bracket's radius, is inside 0..width and 0..height (inline, from
+ * 0x00122395), then whether the point is (0x0002726F); if either says no,
+ * the bracket's off-screen arrow is drawn, placed from the middle toward
+ * that position. Wide, a target out past the 4:3 picture's side is still on
+ * the screen, and got an arrow at the 4:3 border as well as its bracket.
+ *
+ * Just before the tests it calls 0x00121A12 with 0 (thiscall, `ret 4`);
+ * here its x there ([ebp+0x38], ebp the caller's: the frame is esp + 0x84
+ * at that call) is squeezed toward the middle as the wide picture is, so
+ * the tests and the arrow see where the target is on the wide screen in
+ * the 4:3 picture's pixels, as the HUD is drawn. The bracket is drawn
+ * already; nothing after the tests reads the x. */
+extern void sub_00121A12_gen(void);
+void sub_00121A12(void)
+{
+    float k = jsf_widescreen_k();
+
+    if (k < 1.0f && MEM32(g_esp) == 0x00122395u && MEM32(g_esp + 4) == 0u) {
+        uint32_t ebp = g_esp + 0x84u, cam = g_edi;
+        uint32_t ret = MEM32(ebp + 0x74u);      /* 0x0012204E's own return */
+        int w = (int)MEM32(cam + 8);
+        float x = MEMF(ebp + 0x38u);
+        if (ret >= 0x00010000u && ret < 0x00210000u && w >= 320 && w <= 4096 && isfinite(x) &&
+            fabsf(x) < 1.0e6f) {
+            static int logged;
+            MEMF(ebp + 0x38u) = 0.5f * (float)w + (x - 0.5f * (float)w) * k;
+            if (logged++ < 3)
+                SDL_Log("widescreen: target marker test, x %.1f -> %.1f (y %.1f, screen %d x %d, from %08x)", x,
+                        MEMF(ebp + 0x38u), MEMF(ebp + 0x3cu), w, (int)MEM32(cam + 12), ret);
+        }
+    }
+    sub_00121A12_gen();
 }

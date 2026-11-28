@@ -217,6 +217,16 @@ code 0x001FEB80 and 0x001FEC60.
   display's ship is 3D drawn into a small viewport inside a 2D frame: it
   now follows the 2D (`hud_viewport`). The off-screen target markers sit
   against the 4:3 screen's sides: kept against the wide screen's.
+- A target's marker: 0x0012204E (thiscall on the marker, camera in edi,
+  frame ebp = entry esp - 0x74) projects the target (0x000271ED, x at
+  [ebp+0x38], y [ebp+0x3C]), draws the bracket, calls 0x00121A12(0), then
+  tests x and y plus and minus the bracket's radius against 0..width
+  (camera +8) and 0..height (+0xC) inline ([ebp+0x67] set if outside) and
+  the point with 0x0002726F; outside, the off-screen arrow goes from the
+  middle toward the point (0x00122445). Widescreen squeezes that x before
+  the tests (`widescreen.c`). The bracket is drawn as pieces of one
+  texture (corners, ticks, the health arc), with the lead triangle and
+  arcs of their own textures around it.
 - The sun's glow vanishes near the wide screen's sides: the game decides
   the sun is off its 4:3 screen. The world-to-screen projection is
   0x000271ED (thiscall, camera in ecx; +0x90 horizontal field of view,

@@ -2775,7 +2775,7 @@ static bool hud_sprite(uint32_t base, uint32_t stride, uint32_t first, uint32_t 
  * HUD Edges, a piece in the top or bottom third and in a side third goes
  * to that side, unless a menu is up; so does a marker against a side. */
 /* The big HUD pieces put against a side, this frame and the last (the
- * lock-on brackets are drawn before the panels): a small piece goes to a
+ * lock-on brackets are drawn before the panels; 90 by 90 or more): a small piece goes to a
  * side with the side-thirds rule only inside one of them, as the corner
  * panels' lights and digits are. A target bracket (four corners of 15x16,
  * each its own draw) straddling the line between the middle and the
@@ -2798,7 +2798,9 @@ static float side_piece(const float b[4], float a)
 {
     float w = b[2] - b[0], h = b[3] - b[1];
 
-    if (w >= 64.0f && h >= 64.0f) {
+    /* the corner panels are 96 to 164 each way; the lead triangle,
+     * turned, can be 64 square and is no panel */
+    if (w >= 90.0f && h >= 90.0f) {
         int f = big_fill, i;
         for (i = 0; i < nbig_pieces[f]; i++)
             if (!memcmp(big_pieces[f][i].b, b, sizeof big_pieces[f][i].b))
