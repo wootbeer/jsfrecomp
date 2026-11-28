@@ -497,7 +497,8 @@ void sub_0022ADF0(void)
         streak = now == state ? 0 : streak + 1;
         if (now != state && jsf_settings_get()->aspect != JSF_ASPECT_4_3)
             resqueeze_frame(now);
-        keep_groups_whole();
+        if (now == 0)           /* play: over play the panels keep play's sides from memory */
+            keep_groups_whole();
         nflat_recs = 0;
         if (streak >= 1 || jsf_settings_get()->aspect == JSF_ASPECT_4_3) {
             if (now != state && logged++ < 40)
@@ -2915,7 +2916,9 @@ static void resqueeze_frame(int s)
  * of one texture (the yellow one four 15x16 corners, the green one eight
  * pieces of an atlas), and around it pieces of other textures (the lead
  * arrow, the health and shield arcs); a target off the screen gets an arrow
- * and arcs at the side instead, no bracket. The side rules, piece by piece,
+ * and arcs at the side instead, no bracket. The side rules, piece by piece
+ * (the lead triangle, near the side of the 4:3 picture, took the
+ * off-screen markers' rule and crossed to the bracket's other side),
  * split them: near the side of the 4:3 picture the outer pieces went to the
  * side of the wide one and the inner ones stayed. At the end of the frame
  * the small pieces outside the corner panels are grouped by distance
@@ -2928,11 +2931,16 @@ static void keep_groups_whole(void)
 {
     static uint16_t idx[MAX_GROUPED], parent[MAX_GROUPED];
     uint32_t n = 0;
+    int rtw, rth;
+
+    target_size(&rtw, &rth);
 
     for (uint32_t i = 0; i < nflat_recs && n < MAX_GROUPED; i++) {
         const flat_rec *r = &flat_recs[i];
-        if (r->full || !r->tex0 || r->k == 0.0f || (r->b[2] - r->b[0] >= 64.0f && r->b[3] - r->b[1] >= 64.0f) ||
-            (r->at != 0.0f && in_big_piece(r->b, r->at)))
+        /* not the corner panels (big pieces against a side) nor their
+         * parts; the lead triangle, turned, can be 64 square itself */
+        if (r->full || !r->tex0 || r->k == 0.0f || (r->at != 0.0f && in_big_piece(r->b, r->at)) ||
+            r->b[2] - r->b[0] >= 0.3f * (float)rtw || r->b[3] - r->b[1] >= 0.3f * (float)rth)
             continue;
         idx[n] = (uint16_t)i;
         parent[n] = (uint16_t)n;
